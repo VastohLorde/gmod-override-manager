@@ -1,0 +1,5 @@
+"VertexLitGeneric"
+{
+	"$basetexture" "dro/models/player/characters2/isrflg/colorsorig"
+	"$nocull" "1"
+}

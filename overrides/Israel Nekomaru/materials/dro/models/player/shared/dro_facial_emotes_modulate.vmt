@@ -1,0 +1,5 @@
+DecalModulate
+{
+	$basetexture "dro\models\player\shared\dro_facial_emotes"
+	$model 1
+}

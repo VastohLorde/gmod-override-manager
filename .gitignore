@@ -1,0 +1,11 @@
+# local machine config (per-user GMod path)
+config.json
+
+# python / build artifacts
+__pycache__/
+_build/
+_dist/
+*.spec
+
+# the built binary is distributed via GitHub Releases, not committed
+*.exe

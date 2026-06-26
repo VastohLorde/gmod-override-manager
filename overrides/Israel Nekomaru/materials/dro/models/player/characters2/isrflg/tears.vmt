@@ -1,0 +1,18 @@
+"VertexlitGeneric"
+{
+	"$basetexture" "dro/models/player/characters2/isrflg/tears"
+	"$nodecal" 1
+	"$translucent" 1
+
+	"$lightwarptexture" "dro/models/player/shared/shaders/generic_lightwarp"
+	"$phongwarptexture" "dro/models/player/shared/shaders/skin_lightwarp"
+	"$phong" "1"
+	"$phongboost"	".1"
+	"$phongalbedotint" "1"
+	"$phongexponenttexture" "dro/models/player/shared/shaders/phong_exp"
+	"$phongfresnelranges"	"[1 .1 .1]"
+
+	"$rimlight"               "1"
+	"$rimlightexponent"       "3"
+	"$rimlightboost"          "4"
+}

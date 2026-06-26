@@ -1,0 +1,7 @@
+{
+  "name": "Female Shuichi",
+  "character": "Shuichi Saihara",
+  "skin": "Female model",
+  "description": "Replaces the regular Shuichi Saihara player model with the female variant (char1 -> female mesh). Includes female courtroom sprites.",
+  "files": ["models/dro/player/characters3/char1/char1.mdl", "materials/dro/sprites/.../shuichi saihara"]
+}

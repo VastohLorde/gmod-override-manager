@@ -1,0 +1,13 @@
+VertexLitGeneric
+{
+	$basetexture "dro\models\player\shared\dro_facial_emotes"
+	$bumpmap "null-bumpmap"
+	// $phong 1
+	// $phongboost 1
+	// $phongexponent 2
+	// $phongfresnelranges "[0 0.6 10]"
+	$halflambert 1
+	$model 1
+	$translucent 1
+	// $decal 1
+}

@@ -1,8 +1,8 @@
 # GMod Override Manager
 
-A small Windows app to manage **model / skin overrides** for Garry's Mod.
-Each override is a drop-in folder ("pack"); the app lists what character each one
-replaces and lets you toggle them on/off.
+A small Windows app for **Shinri Trial** players to manage Garry's Mod
+model/skin/sprite overrides. Each override is a drop-in folder ("pack"); the app
+lists what character each one replaces and lets you toggle it on/off.
 
 ## Download
 Grab **`GMod_Override_Manager.zip`** from the [Releases](../../releases) page,
@@ -87,6 +87,27 @@ local `overrides/` folder.
 
 To remove a local override, select it in the main list and click **Delete**. If
 it is enabled, the app disables it before removing the local pack folder.
+
+## Submit Your Work
+Want your own Shinri Trial override added to Community Packs? Submit it through
+GitHub so it can be reviewed before it appears in the app:
+
+1. Fork this repo.
+2. Add your override ZIP to `community_packs/`.
+3. Add an entry for it to `community_packs.json`.
+4. Open a pull request.
+
+Only approved and merged pull requests show up in the Community Packs menu.
+Packs should contain only normal override files:
+
+```
+My Override/
+  override.json
+  addon.json
+  models/...
+  materials/...
+  lua/...
+```
 
 ## Included packs
 | Override | Character | Skin |

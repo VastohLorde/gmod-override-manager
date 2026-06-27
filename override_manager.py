@@ -34,12 +34,19 @@ OVERRIDES_DIR = os.path.join(APP_DIR, "overrides")
 CONFIG_PATH = os.path.join(APP_DIR, "config.json")
 DEFAULT_GMOD = r"C:\Program Files (x86)\Steam\steamapps\common\GarrysMod\garrysmod"
 DEFAULT_COMMUNITY_INDEX_URL = "https://raw.githubusercontent.com/VastohLorde/gmod-override-manager/main/community_packs.json"
+OLD_COMMUNITY_INDEX_URLS = {
+    "https://raw.githubusercontent.com/YOURNAME/gmod-override-packs/main/community_packs.json",
+}
 
 
 def load_config():
     if os.path.exists(CONFIG_PATH):
         try:
-            return json.load(open(CONFIG_PATH, encoding="utf-8"))
+            cfg = json.load(open(CONFIG_PATH, encoding="utf-8"))
+            if cfg.get("community_index_url") in OLD_COMMUNITY_INDEX_URLS:
+                cfg["community_index_url"] = DEFAULT_COMMUNITY_INDEX_URL
+                save_config(cfg)
+            return cfg
         except Exception:
             pass
     return {"gmod_path": DEFAULT_GMOD, "community_index_url": DEFAULT_COMMUNITY_INDEX_URL}

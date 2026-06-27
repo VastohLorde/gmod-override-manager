@@ -9,10 +9,8 @@ Grab **`GMod_Override_Manager.zip`** from the [Releases](../../releases) page,
 extract the folder anywhere, and open **`GMod Override Manager.exe`** inside.
 This is a portable app, not an installer.
 
-The separate **`GMod.Override.Manager.exe`** release asset is just a direct
-download alternative if you only want the app file. No setup wizard, install
-step, or Python is needed for either option. There's a **Tutorial** button inside
-the app.
+No setup wizard, install step, or Python is needed. There's a **Tutorial** button
+inside the app.
 
 The ZIP is a clean portable app folder. It does not include preinstalled local
 override packs, personal config, build cache, or generated app cache. Use

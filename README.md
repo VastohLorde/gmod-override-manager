@@ -6,8 +6,12 @@ lists what character each one replaces and lets you toggle it on/off.
 
 ## Download
 Grab **`GMod_Override_Manager.zip`** from the [Releases](../../releases) page,
-extract it anywhere, and run **`GMod Override Manager.exe`** (standalone — no
-Python needed). There's a **Tutorial** button inside the app.
+extract it anywhere, and run the `.exe` inside. This is the recommended download
+because it includes the README.
+
+The separate **`GMod.Override.Manager.exe`** release asset is just a direct
+download alternative if you only want the app file. No Python is needed for
+either option. There's a **Tutorial** button inside the app.
 
 ## How it works
 Enabling a pack installs it as a **legacy addon** (`addons/ovr_<name>`). Legacy

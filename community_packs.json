@@ -26,6 +26,15 @@
       "author": "VastohLorde",
       "description": "Replaces Nekomaru with the Israel Nekomaru override pack.",
       "download_url": "https://raw.githubusercontent.com/VastohLorde/gmod-override-manager/main/community_packs/Israel.Nekomaru.zip"
+    },
+    {
+      "name": "Hoshino Himiko",
+      "character": "Himiko Yumeno",
+      "skin": "Hoshino model + sprites",
+      "version": "0.1.0",
+      "author": "VastohLorde",
+      "description": "Replaces Himiko Yumeno with Takanashi Hoshino's playermodel and Hoshino courtroom sprites.",
+      "download_url": "https://raw.githubusercontent.com/VastohLorde/gmod-override-manager/main/community_packs/Hoshino.Himiko.zip"
     }
   ]
 }

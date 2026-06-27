@@ -1,0 +1,31 @@
+{
+  "packs": [
+    {
+      "name": "Female Shuichi",
+      "character": "Shuichi Saihara",
+      "skin": "Female model + sprites",
+      "version": "0.1.0",
+      "author": "VastohLorde",
+      "description": "Replaces Shuichi with the Female Shuichi override pack.",
+      "download_url": "https://raw.githubusercontent.com/VastohLorde/gmod-override-manager/main/community_packs/Female.Shuichi.zip"
+    },
+    {
+      "name": "George Droyd K1B0",
+      "character": "K1-B0 / K1B0",
+      "skin": "George Droyd model + sprites",
+      "version": "0.1.0",
+      "author": "VastohLorde",
+      "description": "Replaces K1B0/Keebo with George Droyd model, materials, and courtroom sprites.",
+      "download_url": "https://raw.githubusercontent.com/VastohLorde/gmod-override-manager/main/community_packs/George.Droyd.K1B0.zip"
+    },
+    {
+      "name": "Israel Nekomaru",
+      "character": "Nekomaru Nidai",
+      "skin": "Israel skin + sprites",
+      "version": "0.1.0",
+      "author": "VastohLorde",
+      "description": "Replaces Nekomaru with the Israel Nekomaru override pack.",
+      "download_url": "https://raw.githubusercontent.com/VastohLorde/gmod-override-manager/main/community_packs/Israel.Nekomaru.zip"
+    }
+  ]
+}

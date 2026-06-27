@@ -40,10 +40,59 @@ overrides/
 }
 ```
 
+## Community Packs
+Click **Community Packs** to browse the online JSON index of downloadable
+override packs. Pick a pack, click **Install Selected**, then enable it from the
+main list.
+
+The index can be hosted anywhere that serves raw JSON, including GitHub Pages or
+GitHub's raw file URLs. This build uses:
+
+```
+https://raw.githubusercontent.com/VastohLorde/gmod-override-manager/main/community_packs.json
+```
+
+See `community_packs.example.json` for the format:
+
+```json
+{
+  "packs": [
+    {
+      "name": "George Droyd K1B0",
+      "character": "K1-B0 / K1B0",
+      "skin": "George Droyd override",
+      "version": "0.1.0",
+      "author": "VastohLorde",
+      "description": "Replaces K1B0/Keebo with George Droyd.",
+      "download_url": "https://raw.githubusercontent.com/VastohLorde/gmod-override-manager/main/community_packs/George.Droyd.K1B0.zip"
+    }
+  ]
+}
+```
+
+Each `download_url` should point to a ZIP containing a normal override pack
+folder or the pack contents directly:
+
+```
+George Droyd K1B0/
+  override.json
+  addon.json
+  models/...
+  materials/...
+  lua/...
+```
+
+The installer rejects unsafe ZIP paths like `../file` and extracts only into the
+local `overrides/` folder.
+
+To remove a local override, select it in the main list and click **Delete**. If
+it is enabled, the app disables it before removing the local pack folder.
+
 ## Included packs
 | Override | Character | Skin |
 |---|---|---|
 | Female Shuichi | Shuichi Saihara | Female model + sprites |
+| George Droyd K1B0 | K1-B0 / K1B0 | George Droyd model + sprites |
 | Israel Nekomaru | Nekomaru Nidai | Israel skin + sprites |
 
 ## Notes

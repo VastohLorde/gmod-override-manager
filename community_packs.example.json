@@ -1,0 +1,13 @@
+{
+  "packs": [
+    {
+      "name": "George Droyd K1B0",
+      "character": "K1-B0 / K1B0",
+      "skin": "George Droyd override",
+      "version": "0.1.0",
+      "author": "VastohLorde",
+      "description": "Replaces K1B0/Keebo with George Droyd model and courtroom sprites.",
+      "download_url": "https://raw.githubusercontent.com/VastohLorde/gmod-override-manager/main/community_packs/George.Droyd.K1B0.zip"
+    }
+  ]
+}

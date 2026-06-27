@@ -466,6 +466,7 @@ class App(tk.Tk):
         ttk.Button(bot, text="Refresh", command=load_index).pack(side="left")
         ttk.Button(bot, text="Install Selected", command=install_selected).pack(side="left", padx=4)
         ttk.Button(bot, text="Close", command=win.destroy).pack(side="right")
+        win.after(100, load_index)
 
     def refresh(self):
         self.packs = scan_overrides()

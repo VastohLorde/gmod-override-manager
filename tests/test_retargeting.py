@@ -398,6 +398,13 @@ class RetargetingTests(unittest.TestCase):
         self.assertIn("game-ready .vtf or .vmt", str(cm.exception))
         self.assertFalse(os.path.exists(os.path.join(self.tempdir, "overrides", "Bad Sprite Pack")))
 
+    def test_make_talk_sprite_slots_can_extend_optional_talk_sprites(self):
+        self.assertEqual(
+            [("Talk 1", "ct_sprite_1.vtf"), ("Talk 2", "ct_sprite_2.vtf"), ("Talk 3", "ct_sprite_3.vtf")],
+            om.make_talk_sprite_slots(3),
+        )
+        self.assertEqual(("Talk 5", "ct_sprite_5.vtf"), om.make_talk_sprite_slots(5)[-1])
+
 
 if __name__ == "__main__":
     unittest.main()

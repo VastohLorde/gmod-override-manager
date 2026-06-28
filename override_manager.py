@@ -770,10 +770,18 @@ def pack_folder_name(name):
 MODEL_SIDECAR_EXTS = (".mdl", ".vvd", ".phy", ".dx90.vtx", ".sw.vtx", ".ani")
 SPRITE_GROUPS = [
     {"name": "Talk", "initial": 3, "prefix": "ct_sprite", "first": None},
+    {"name": "Talk Icon", "initial": 3, "prefix": "ct_spriteico", "first": None},
     {"name": "Argue", "initial": 2, "prefix": "ct_argue", "first": None},
     {"name": "Consent", "initial": 1, "prefix": "ct_consent", "first": "ct_consent.vtf"},
     {"name": "Scrum Debate Left", "initial": 1, "prefix": "ct_scrum_left", "first": "ct_scrum_left.vtf"},
     {"name": "Scrum Debate Right", "initial": 1, "prefix": "ct_scrum_right", "first": "ct_scrum_right.vtf"},
+    {"name": "Scrum Sprite", "initial": 4, "prefix": "scrum_sprite", "first": None},
+    {"name": "Dead", "initial": 1, "prefix": "dead", "first": "dead.vtf"},
+    {"name": "HUD Icon", "initial": 1, "prefix": "hud_ico", "first": "hud_ico.vtf"},
+    {"name": "Pixel Icon", "initial": 1, "prefix": "pixel_ico", "first": "pixel_ico.vtf"},
+    {"name": "Pixel Sprite", "initial": 1, "prefix": "pixel_sprite", "first": "pixel_sprite.vtf"},
+    {"name": "Vote Icon", "initial": 1, "prefix": "vote_ico", "first": "vote_ico.vtf"},
+    {"name": "Vote Sprite", "initial": 1, "prefix": "vote_sprite", "first": "vote_sprite.vtf"},
 ]
 
 

@@ -453,6 +453,15 @@ class RetargetingTests(unittest.TestCase):
         self.assertEqual(("Scrum Debate Left 2", "ct_scrum_left_2.vtf"), om.make_sprite_group_slot("Scrum Debate Left", 2))
         self.assertEqual(("Scrum Debate Right 2", "ct_scrum_right_2.vtf"), om.make_sprite_group_slot("Scrum Debate Right", 2))
 
+    def test_make_sprite_group_slot_includes_misc_sprite_types(self):
+        self.assertEqual(("Talk Icon 2", "ct_spriteico_2.vtf"), om.make_sprite_group_slot("Talk Icon", 2))
+        self.assertEqual(("Dead", "dead.vtf"), om.make_sprite_group_slot("Dead", 1))
+        self.assertEqual(("HUD Icon", "hud_ico.vtf"), om.make_sprite_group_slot("HUD Icon", 1))
+        self.assertEqual(("Pixel Icon", "pixel_ico.vtf"), om.make_sprite_group_slot("Pixel Icon", 1))
+        self.assertEqual(("Pixel Sprite", "pixel_sprite.vtf"), om.make_sprite_group_slot("Pixel Sprite", 1))
+        self.assertEqual(("Vote Icon", "vote_ico.vtf"), om.make_sprite_group_slot("Vote Icon", 1))
+        self.assertEqual(("Vote Sprite", "vote_sprite.vtf"), om.make_sprite_group_slot("Vote Sprite", 1))
+
     def test_make_sprite_group_slots_returns_batch_slots(self):
         self.assertEqual(
             [

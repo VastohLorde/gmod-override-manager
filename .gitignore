@@ -5,6 +5,8 @@ config.json
 __pycache__/
 _build/
 _dist/
+build/
+dist/
 *.spec
 
 # the built binary is distributed via GitHub Releases, not committed

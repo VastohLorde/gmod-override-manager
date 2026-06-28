@@ -637,21 +637,21 @@ def patch_retargeted_model_bodygroup_names(dest_folder, pack, target, source):
     target_groups = parse_mdl_bodygroups(target_reference_mdl)
     compat = bodygroup_compat_map(target_groups, override_groups)
     renames = {}
-    used_override = set()
     for _target_index, item in compat.items():
         target_name = item.get("target_name") or ""
         override_index = item.get("override_index")
         if target_name and override_index is not None:
             renames[int(override_index)] = target_name
-            used_override.add(int(override_index))
-    hide_counts = {
-        int(group["index"]): 1
-        for group in configurable_groups(override_groups)
-        if int(group["index"]) not in used_override
-    }
+    # IMPORTANT: only rename bodygroups (a cosmetic string change). Do NOT collapse
+    # the submodel counts of unmapped groups. Richly-bodygrouped models (e.g. anime
+    # models like Shiroko, with separate Clothes/Coat/Glove/Scarf/Shoes/Socks groups)
+    # have more clothing groups than the target slot; forcing those extra groups to
+    # count=1 pins them to submodel 0, which hides clothing pieces and corrupts the
+    # body-index decode (this is what "bugged out the clothing textures"). Leaving the
+    # counts native keeps every clothing submodel intact; the model spawns at body=0,
+    # which is its default fully-dressed outfit.
     changed_names = patch_mdl_bodygroup_names(copied_mdl, renames)
-    changed_counts = patch_mdl_bodygroup_counts(copied_mdl, hide_counts)
-    return changed_names or changed_counts
+    return changed_names
 
 
 def read_source_target_from_json(folder):

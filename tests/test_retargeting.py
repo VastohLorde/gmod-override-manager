@@ -304,10 +304,16 @@ class RetargetingTests(unittest.TestCase):
         self.assertIn("tie", names)
         self.assertIn("skirt", names)
 
-    def test_enable_retarget_hides_unmatched_override_bodygroups(self):
+    def test_enable_retarget_preserves_override_bodygroup_counts(self):
+        # Retargeting must NOT collapse the override model's own bodygroups. Richly
+        # bodygrouped models (e.g. Shiroko: separate Clothes/Coat/Glove/Scarf/Shoes/
+        # Socks groups) carry more clothing groups than the target slot; forcing the
+        # unmatched ones to count=1 pins them to submodel 0 and hides clothing /
+        # corrupts the body-index decode. Only names may change; counts stay native.
         source_pack = r"C:\Users\user\Desktop\GMod_Override_Manager\overrides\Hoshino Himiko"
+        source_model = os.path.join(source_pack, "models/dro/player/characters3/char12/char12.mdl")
         target_model = r"C:\Users\user\Desktop\Female_Shuichi_Addon_Extracts\2562456244_PlayerModels_ST\models\dro\player\characters1\char9\char9.mdl"
-        if not os.path.exists(os.path.join(source_pack, "models/dro/player/characters3/char12/char12.mdl")) or not os.path.exists(target_model):
+        if not os.path.exists(source_model) or not os.path.exists(target_model):
             self.skipTest("real Hoshino/Junko models not available")
         cfg = {"gmod_path": self.tempdir}
         pack = {"name": "Hoshino Himiko", "slug": "ovr_hoshino_himiko", "folder": source_pack}
@@ -321,8 +327,9 @@ class RetargetingTests(unittest.TestCase):
             "ovr_hoshino_himiko__junko_enoshima__default",
             "models/dro/player/characters1/char9/char9.mdl",
         )
-        visible = [group["name"] for group in om.parse_mdl_bodygroups(mdl_path) if group["count"] > 1]
-        self.assertEqual(["glasses", "skirt", "tie"], sorted(visible))
+        source_counts = sorted(g["count"] for g in om.parse_mdl_bodygroups(source_model))
+        retargeted_counts = sorted(g["count"] for g in om.parse_mdl_bodygroups(mdl_path))
+        self.assertEqual(source_counts, retargeted_counts)
 
     def test_disable_removes_default_and_retargeted_addons_for_pack(self):
         addons = os.path.join(self.tempdir, "addons")

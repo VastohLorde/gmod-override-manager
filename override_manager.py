@@ -244,6 +244,7 @@ def patch_mdl_bodygroup_names(path, index_to_name):
             struct.pack_into("<i", data, offset, append_offset - offset)
         changed = True
     if changed:
+        struct.pack_into("<i", data, 76, len(data))
         with open(path, "wb") as f:
             f.write(data)
     return changed

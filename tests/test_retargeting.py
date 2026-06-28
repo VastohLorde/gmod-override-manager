@@ -268,6 +268,20 @@ class RetargetingTests(unittest.TestCase):
         self.assertEqual("shoes", groups[10]["name"])
         self.assertEqual("pants", groups[8]["name"])
 
+    def test_bodygroup_name_patch_updates_mdl_declared_length_when_appending(self):
+        source_pack = r"C:\Users\user\Desktop\GMod_Override_Manager\overrides\Hoshino Himiko"
+        if not os.path.exists(os.path.join(source_pack, "models/dro/player/characters3/char12/char12.mdl")):
+            self.skipTest("real Hoshino model not available")
+        mdl_path = os.path.join(self.tempdir, "char12.mdl")
+        shutil.copy2(os.path.join(source_pack, "models/dro/player/characters3/char12/char12.mdl"), mdl_path)
+
+        om.patch_mdl_bodygroup_names(mdl_path, {7: "very_long_halo_slider_name"})
+
+        with open(mdl_path, "rb") as f:
+            data = f.read()
+        declared_length = int.from_bytes(data[76:80], "little", signed=True)
+        self.assertEqual(len(data), declared_length)
+
     def test_enable_retarget_renames_override_bodygroups_to_target_slider_names(self):
         source_pack = r"C:\Users\user\Desktop\GMod_Override_Manager\overrides\Hoshino Himiko"
         target_model = r"C:\Users\user\Desktop\Female_Shuichi_Addon_Extracts\2562456244_PlayerModels_ST\models\dro\player\characters1\char9\char9.mdl"

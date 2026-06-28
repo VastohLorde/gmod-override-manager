@@ -213,6 +213,39 @@ def patch_mdl_bodygroup_order(path, target_groups, override_groups):
     return True
 
 
+def patch_mdl_bodygroup_names(path, index_to_name):
+    with open(path, "rb") as f:
+        data = bytearray(f.read())
+    if len(data) < 240:
+        return False
+    try:
+        numbodyparts, bodypartindex = struct.unpack_from("<ii", data, 232)
+    except struct.error:
+        return False
+    changed = False
+    for index, new_name in index_to_name.items():
+        if not (0 <= int(index) < numbodyparts):
+            continue
+        offset = bodypartindex + int(index) * 16
+        if offset + 16 > len(data):
+            continue
+        sznameindex = struct.unpack_from("<i", data, offset)[0]
+        name_offset = offset + sznameindex
+        old_name = read_c_string(data, name_offset)
+        if not old_name:
+            continue
+        raw = str(new_name or "").encode("utf-8")
+        old_raw = old_name.encode("utf-8")
+        if len(raw) > len(old_raw):
+            continue
+        data[name_offset:name_offset + len(old_raw)] = raw + (b"\0" * (len(old_raw) - len(raw)))
+        changed = True
+    if changed:
+        with open(path, "wb") as f:
+            f.write(data)
+    return changed
+
+
 def safe_game_path(path, allow_empty=True, strip_ext=False):
     raw = str(path or "").replace("\\", "/").strip()
     if raw.startswith("/") or os.path.isabs(raw) or (len(raw) > 1 and raw[1] == ":"):
@@ -565,6 +598,24 @@ def patch_retargeted_model_bodygroups(dest_folder, pack, target, source):
     return patch_mdl_bodygroup_order(copied_mdl, target_groups, override_groups)
 
 
+def patch_retargeted_model_bodygroup_names(dest_folder, pack, target, source):
+    copied_mdl = mdl_path_from_base(dest_folder, target.get("model_base", ""))
+    target_reference_mdl = find_known_target_mdl(target)
+    source_mdl = mdl_path_from_base(pack["folder"], source.get("model_base", ""))
+    if not (os.path.exists(copied_mdl) and os.path.exists(target_reference_mdl) and os.path.exists(source_mdl)):
+        return False
+    override_groups = parse_mdl_bodygroups(source_mdl)
+    target_groups = parse_mdl_bodygroups(target_reference_mdl)
+    compat = bodygroup_compat_map(target_groups, override_groups)
+    renames = {}
+    for _target_index, item in compat.items():
+        target_name = item.get("target_name") or ""
+        override_index = item.get("override_index")
+        if target_name and override_index is not None:
+            renames[int(override_index)] = target_name
+    return patch_mdl_bodygroup_names(copied_mdl, renames)
+
+
 def read_source_target_from_json(folder):
     path = os.path.join(folder, "override.json")
     if not os.path.exists(path):
@@ -719,7 +770,7 @@ def enable(cfg, pack, target=None):
             if not source.get("model_base"):
                 raise ValueError("Could not infer this pack's source model path for retargeting.")
             copy_pack_tree(pack["folder"], dest, source, target)
-            patch_retargeted_model_bodygroups(dest, pack, target, source)
+            patch_retargeted_model_bodygroup_names(dest, pack, target, source)
             write_bodygroup_compat_lua(dest, pack, target, source)
         else:
             copy_pack_tree(pack["folder"], dest)

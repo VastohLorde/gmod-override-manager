@@ -260,30 +260,20 @@ class RetargetingTests(unittest.TestCase):
         self.assertIn("targetBase", text)
         self.assertIn("halo", text)
 
-    def test_enable_retarget_patches_copied_mdl_bodygroup_indexes(self):
+    def test_bodygroup_name_patch_renames_only_matching_length_labels(self):
         source_pack = r"C:\Users\user\Desktop\GMod_Override_Manager\overrides\Hoshino Himiko"
-        target_model = r"C:\Users\user\Desktop\Female_Shuichi_Addon_Extracts\2562456244_PlayerModels_ST\models\dro\player\characters1\char9\char9.mdl"
-        if not os.path.exists(os.path.join(source_pack, "models/dro/player/characters3/char12/char12.mdl")) or not os.path.exists(target_model):
-            self.skipTest("real Hoshino/Junko models not available")
-        cfg = {"gmod_path": self.tempdir}
-        pack = {"name": "Hoshino Himiko", "slug": "ovr_hoshino_himiko", "folder": source_pack}
-        target = om.find_target({}, "Junko Enoshima (Default)")
+        if not os.path.exists(os.path.join(source_pack, "models/dro/player/characters3/char12/char12.mdl")):
+            self.skipTest("real Hoshino model not available")
+        mdl_path = os.path.join(self.tempdir, "char12.mdl")
+        shutil.copy2(os.path.join(source_pack, "models/dro/player/characters3/char12/char12.mdl"), mdl_path)
 
-        om.enable(cfg, pack, target)
+        changed = om.patch_mdl_bodygroup_names(mdl_path, {7: "hat", 10: "shoes"})
 
-        mdl_path = os.path.join(
-            self.tempdir,
-            "addons",
-            "ovr_hoshino_himiko__junko_enoshima__default",
-            "models/dro/player/characters1/char9/char9.mdl",
-        )
+        self.assertTrue(changed)
         groups = {group["index"]: group for group in om.parse_mdl_bodygroups(mdl_path)}
-        self.assertEqual("glove", groups[3]["name"])
-        self.assertEqual(1, groups[3]["base"])
-        self.assertEqual("tie", groups[4]["name"])
-        self.assertEqual(2, groups[4]["base"])
-        self.assertEqual("skirt", groups[6]["name"])
-        self.assertEqual(4, groups[6]["base"])
+        self.assertEqual("hat", groups[7]["name"])
+        self.assertEqual("shoes", groups[10]["name"])
+        self.assertEqual("pants", groups[8]["name"])
 
     def test_disable_removes_default_and_retargeted_addons_for_pack(self):
         addons = os.path.join(self.tempdir, "addons")

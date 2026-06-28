@@ -452,6 +452,8 @@ class RetargetingTests(unittest.TestCase):
         self.assertEqual(("Consent 2", "ct_consent_2.vtf"), om.make_sprite_group_slot("Consent", 2))
         self.assertEqual(("Scrum Debate Left 2", "ct_scrum_left_2.vtf"), om.make_sprite_group_slot("Scrum Debate Left", 2))
         self.assertEqual(("Scrum Debate Right 2", "ct_scrum_right_2.vtf"), om.make_sprite_group_slot("Scrum Debate Right", 2))
+        self.assertEqual(("Objection", "ct_objection.vtf"), om.make_sprite_group_slot("Objection", 1))
+        self.assertEqual(("Door Sprite", "doorpixelart.vtf"), om.make_sprite_group_slot("Door Sprite", 1))
 
     def test_make_sprite_group_slot_includes_misc_sprite_types(self):
         self.assertEqual(("Talk Icon 2", "ct_spriteico_2.vtf"), om.make_sprite_group_slot("Talk Icon", 2))

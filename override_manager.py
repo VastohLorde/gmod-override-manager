@@ -24,6 +24,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 import urllib.request
 import zipfile
+import time
 try:
     import translate_cache
 except ImportError:
@@ -47,7 +48,7 @@ OLD_COMMUNITY_INDEX_URLS = {
     # Pre-rename URL: auto-migrate existing configs to the new repo path.
     "https://raw.githubusercontent.com/VastohLorde/gmod-override-manager/main/community_packs.json",
 }
-APP_VERSION = "1.8"
+APP_VERSION = "1.9"
 RELEASES_API_URL = "https://api.github.com/repos/VastohLorde/shinri-trial-override-manager/releases/latest"
 RELEASES_PAGE_URL = "https://github.com/VastohLorde/shinri-trial-override-manager/releases/latest"
 UPDATE_ASSET_NAME = "GMod_Override_Manager.zip"
@@ -1474,6 +1475,204 @@ def find_model_files(folder):
     return sorted(models, key=lambda p: p.lower())
 
 
+PRESENCE_ADDON = "ovr_manager_presence"
+
+PRESENCE_LUA = r"""-- Override Manager - Community Presence (client only)
+-- Lets Override Manager users on the same server see each other's COMMUNITY
+-- overrides and choose to install them. Community (approved) packs only.
+if SERVER then return end
+
+local DIR = "override_manager"
+local MANIFEST = DIR .. "/presence.json"
+local REQUESTS = DIR .. "/requests.json"
+local STATUS   = DIR .. "/status.json"
+local MARK     = "\226\128\139OVRP1\226\128\139"  -- zero-width-wrapped marker
+
+file.CreateDir(DIR)
+local mine, community = {}, {}
+local offers = {}
+local lastStatus = 0
+local panel
+
+local function readJSON(p)
+    local s = file.Read(p, "DATA")
+    if not s or s == "" then return nil end
+    local ok, t = pcall(util.JSONToTable, s)
+    if ok then return t end
+    return nil
+end
+local function writeJSON(p, t) file.Write(p, util.TableToJSON(t)) end
+local function sw(s, p) return s:sub(1, #p) == p end
+local function notify(txt)
+    chat.AddText(Color(120, 200, 255), "[Override Manager] ", Color(255, 255, 255), txt)
+end
+
+local function loadManifest()
+    local t = readJSON(MANIFEST)
+    if not t then return false end
+    mine = t.mine or {}
+    community = {}
+    for _, n in ipairs(t.community or {}) do community[n] = true end
+    return true
+end
+
+local function have(pack, target)
+    for _, m in ipairs(mine) do
+        if m.pack == pack and (m.target or "") == (target or "") then return true end
+    end
+    return false
+end
+
+local function broadcast()
+    loadManifest()
+    if #mine == 0 then return end
+    local parts = {}
+    for _, m in ipairs(mine) do parts[#parts + 1] = m.pack .. "::" .. (m.target or "") end
+    local msg = MARK .. table.concat(parts, ";;")
+    if #msg > 200 then msg = msg:sub(1, 200) end
+    RunConsoleCommand("say", msg)
+end
+
+local function queueInstall(o)
+    local reqs = readJSON(REQUESTS) or {}
+    reqs[#reqs + 1] = { pack = o.pack, target = o.target, from = o.from, ts = os.time() }
+    writeJSON(REQUESTS, reqs)
+end
+
+local function rebuildPanel()
+    if IsValid(panel) then panel:Remove() end
+    local list = {}
+    for _, o in pairs(offers) do list[#list + 1] = o end
+    if #list == 0 then notify("No new overrides from others right now.") return end
+    panel = vgui.Create("DFrame")
+    panel:SetSize(440, 70 + #list * 48)
+    panel:Center()
+    panel:SetTitle("Override Manager - others' community overrides")
+    panel:MakePopup()
+    local y = 30
+    for _, o in ipairs(list) do
+        local lbl = vgui.Create("DLabel", panel)
+        lbl:SetPos(12, y + 6); lbl:SetSize(300, 38); lbl:SetWrap(true)
+        lbl:SetText(o.from .. " uses '" .. o.pack .. "'" .. (o.target ~= "" and (" as " .. o.target) or ""))
+        local b = vgui.Create("DButton", panel)
+        b:SetPos(318, y); b:SetSize(110, 32); b:SetText("Install")
+        local oo = o
+        b.DoClick = function()
+            queueInstall(oo)
+            offers[oo.pack .. "|" .. (oo.target or "")] = nil
+            notify("Queued '" .. oo.pack .. "'. Keep the Override Manager app open to finish.")
+            rebuildPanel()
+        end
+        y = y + 48
+    end
+    local ig = vgui.Create("DButton", panel)
+    ig:SetPos(12, y); ig:SetSize(416, 28); ig:SetText("Ignore all")
+    ig.DoClick = function() offers = {}; if IsValid(panel) then panel:Remove() end end
+end
+
+hook.Add("OnPlayerChat", "ovr_presence_listen", function(ply, text)
+    if not isstring(text) or not sw(text, MARK) then return end
+    if IsValid(ply) and ply == LocalPlayer() then return true end
+    local from = IsValid(ply) and ply:Nick() or "Someone"
+    local added = false
+    for entry in string.gmatch(text:sub(#MARK + 1), "([^;]+)") do
+        if entry ~= "" then
+            local pack, target = entry:match("^(.-)::(.*)$")
+            if pack and community[pack] and not have(pack, target) then
+                offers[pack .. "|" .. (target or "")] = { pack = pack, target = target, from = from }
+                added = true
+            end
+        end
+    end
+    if added then notify(from .. " is using community overrides - type !ovr to view and install.") end
+    return true  -- hide the beacon line from our chat
+end)
+
+hook.Add("OnPlayerChat", "ovr_presence_cmd", function(ply, text)
+    if ply == LocalPlayer() and (text == "!ovr" or text == "!overrides") then
+        loadManifest(); rebuildPanel(); return true
+    end
+end)
+
+timer.Create("ovr_presence_status", 4, 0, function()
+    local st = readJSON(STATUS)
+    if not st or (st.ts or 0) <= lastStatus then return end
+    lastStatus = st.ts or 0
+    if st.installed and #st.installed > 0 then
+        local names = {}
+        for _, x in ipairs(st.installed) do names[#names + 1] = x.pack end
+        notify("Installed: " .. table.concat(names, ", "))
+        if st.need_reconnect then
+            Derma_Query("Installed new community overrides.\nReconnect to this server to see them?",
+                "Override Manager",
+                "Reconnect now", function() RunConsoleCommand("retry") end,
+                "Later", function() end)
+        end
+    end
+end)
+
+hook.Add("InitPostEntity", "ovr_presence_join", function() timer.Simple(8, broadcast) end)
+timer.Create("ovr_presence_rebroadcast", 180, 0, broadcast)
+concommand.Add("ovr_share", broadcast)
+concommand.Add("ovr_menu", function() loadManifest() rebuildPanel() end)
+loadManifest()
+"""
+
+
+def presence_data_dir(cfg):
+    return os.path.join(cfg.get("gmod_path", DEFAULT_GMOD), "data", "override_manager")
+
+
+def install_presence_addon(cfg):
+    base = os.path.join(addons_dir(cfg), PRESENCE_ADDON)
+    lua_dir = os.path.join(base, "lua", "autorun")
+    os.makedirs(lua_dir, exist_ok=True)
+    with open(os.path.join(lua_dir, "cl_ovr_presence.lua"), "w", encoding="utf-8") as f:
+        f.write(PRESENCE_LUA)
+    aj = os.path.join(base, "addon.json")
+    if not os.path.exists(aj):
+        with open(aj, "w", encoding="utf-8") as f:
+            json.dump({"title": "Override Manager Presence", "type": "tool", "tags": ["fun"], "ignore": []}, f)
+
+
+def remove_presence_addon(cfg):
+    shutil.rmtree(os.path.join(addons_dir(cfg), PRESENCE_ADDON), ignore_errors=True)
+
+
+def write_presence_manifest(cfg, mine, community_names):
+    d = presence_data_dir(cfg)
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, "presence.json"), "w", encoding="utf-8") as f:
+        json.dump({"mine": mine, "community": community_names, "ts": int(time.time())}, f)
+
+
+def read_presence_requests(cfg):
+    p = os.path.join(presence_data_dir(cfg), "requests.json")
+    if not os.path.exists(p):
+        return []
+    try:
+        data = json.load(open(p, encoding="utf-8"))
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def clear_presence_requests(cfg):
+    p = os.path.join(presence_data_dir(cfg), "requests.json")
+    try:
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump([], f)
+    except Exception:
+        pass
+
+
+def write_presence_status(cfg, installed, need_reconnect):
+    d = presence_data_dir(cfg)
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, "status.json"), "w", encoding="utf-8") as f:
+        json.dump({"installed": installed, "need_reconnect": bool(need_reconnect), "ts": int(time.time())}, f)
+
+
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -1482,10 +1681,20 @@ class App(tk.Tk):
         self.title("GMod Override Manager")
         self.geometry("760x460")
         self.minsize(640, 360)
+        self.community_index = None
+        self._presence_running = False
         self._build()
         self.refresh()
+        self.update_presence_button()
         # Non-blocking update check shortly after the window appears.
         self.after(1200, self.start_update_check)
+        if self.cfg.get("presence_enabled"):
+            try:
+                install_presence_addon(self.cfg)
+            except Exception:
+                pass
+            self.ensure_community_index(then=self.refresh_presence_manifest)
+            self.start_presence_loop()
 
     def _build(self):
         top = ttk.Frame(self, padding=8)
@@ -1536,6 +1745,8 @@ class App(tk.Tk):
         ttk.Button(bot, text="Override Maker", command=self.override_maker).pack(side="left")
         ttk.Button(bot, text="Community Packs", command=self.community_packs).pack(side="left")
         ttk.Button(bot, text="Best Target", command=self.compat_report).pack(side="left")
+        self.presence_btn_text = tk.StringVar(value="Community Presence: OFF")
+        ttk.Button(bot, textvariable=self.presence_btn_text, command=self.toggle_presence).pack(side="left", padx=4)
         ttk.Button(bot, text="Refresh", command=self.refresh).pack(side="right")
         ttk.Button(bot, text="Tutorial", command=self.show_tutorial).pack(side="right", padx=4)
 
@@ -2480,6 +2691,120 @@ class App(tk.Tk):
             tree.selection_set(children[0])
             tree.focus(children[0])
             on_sel()
+
+    # ----- Community presence (see other manager users on the server) -----
+    def ensure_community_index(self, then=None):
+        if self.community_index is not None:
+            if then:
+                then()
+            return
+        url = self.cfg.get("community_index_url", DEFAULT_COMMUNITY_INDEX_URL)
+
+        def work():
+            try:
+                idx = normalize_community_index(read_json_url(url))
+            except Exception:
+                idx = []
+            self.after(0, lambda: (setattr(self, "community_index", idx), then() if then else None))
+        threading.Thread(target=work, daemon=True).start()
+
+    def refresh_presence_manifest(self):
+        names = [e["name"] for e in (self.community_index or [])]
+        if not names:
+            return
+        nameset = set(names)
+        mine = []
+        for p in self.packs:
+            if p["name"] in nameset:
+                active = enabled_target_name(self.cfg, p)
+                if active:
+                    mine.append({"pack": p["name"], "target": active})
+        try:
+            write_presence_manifest(self.cfg, mine, names)
+        except Exception:
+            pass
+
+    def process_presence_requests(self):
+        reqs = read_presence_requests(self.cfg)
+        if not reqs:
+            return
+        index = {e["name"]: e for e in (self.community_index or [])}
+        done, changed = [], False
+        for r in reqs:
+            name = r.get("pack")
+            target = r.get("target") or DEFAULT_TARGET_NAME
+            entry = index.get(name)
+            if not entry:
+                continue  # safety: only community (approved) packs
+            try:
+                existing = next((p for p in self.packs if p["name"] == name), None)
+                if not existing:
+                    install_community_pack(entry)
+                    self.packs = scan_overrides()
+                    existing = next((p for p in self.packs if p["name"] == name), None)
+                if existing:
+                    tgt = find_target(self.cfg, target) if target and target != DEFAULT_TARGET_NAME else None
+                    enable(self.cfg, existing, tgt)
+                    done.append({"pack": name, "target": target, "ok": True})
+                    changed = True
+            except Exception:
+                done.append({"pack": name, "target": target, "ok": False})
+        clear_presence_requests(self.cfg)
+        if done:
+            write_presence_status(self.cfg, done, need_reconnect=True)
+        if changed:
+            self.refresh()
+
+    def presence_loop(self):
+        if not self.cfg.get("presence_enabled"):
+            self._presence_running = False
+            return
+        try:
+            self.process_presence_requests()
+            self.refresh_presence_manifest()
+        except Exception:
+            pass
+        self.after(4000, self.presence_loop)
+
+    def start_presence_loop(self):
+        if getattr(self, "_presence_running", False):
+            return
+        self._presence_running = True
+        self.after(1500, self.presence_loop)
+
+    def update_presence_button(self):
+        self.presence_btn_text.set(
+            "Community Presence: ON" if self.cfg.get("presence_enabled") else "Community Presence: OFF")
+
+    def toggle_presence(self):
+        on = not self.cfg.get("presence_enabled")
+        self.cfg["presence_enabled"] = on
+        save_config(self.cfg)
+        self.update_presence_button()
+        if on:
+            try:
+                install_presence_addon(self.cfg)
+            except Exception as e:
+                self.cfg["presence_enabled"] = False
+                save_config(self.cfg)
+                self.update_presence_button()
+                messagebox.showerror("Community Presence", f"Couldn't install the in-game addon:\n{e}")
+                return
+            self.ensure_community_index(then=self.refresh_presence_manifest)
+            self.start_presence_loop()
+            messagebox.showinfo(
+                "Community Presence",
+                "Community Presence is ON.\n\n"
+                "In game, other Override Manager users broadcast their COMMUNITY overrides. Type !ovr in chat "
+                "to see them and choose which to install - you're never forced to accept.\n\n"
+                "Keep this app open so accepted installs can finish. After installing you'll be asked to "
+                "reconnect to the server to see the change.")
+        else:
+            try:
+                remove_presence_addon(self.cfg)
+            except Exception:
+                pass
+            messagebox.showinfo("Community Presence", "Community Presence is OFF (in-game addon removed).")
 
     # ----- Update checking / self-update -----
     def start_update_check(self, manual=False):

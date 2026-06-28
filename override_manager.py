@@ -770,8 +770,6 @@ def enable(cfg, pack, target=None):
             if not source.get("model_base"):
                 raise ValueError("Could not infer this pack's source model path for retargeting.")
             copy_pack_tree(pack["folder"], dest, source, target)
-            patch_retargeted_model_bodygroup_names(dest, pack, target, source)
-            write_bodygroup_compat_lua(dest, pack, target, source)
         else:
             copy_pack_tree(pack["folder"], dest)
         aj = os.path.join(dest, "addon.json")

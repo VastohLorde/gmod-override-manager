@@ -234,7 +234,7 @@ class RetargetingTests(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join(addon, "materials/models/hoshino_new/hair.vtf")))
         self.assertFalse(os.path.exists(os.path.join(self.tempdir, "addons", "ovr_hoshino_himiko")))
 
-    def test_enable_retarget_does_not_write_bodygroup_compat_lua(self):
+    def test_enable_retarget_writes_bodygroup_compat_lua(self):
         source_pack = r"C:\Users\user\Desktop\GMod_Override_Manager\overrides\Hoshino Himiko"
         target_model = r"C:\Users\user\Desktop\Female_Shuichi_Addon_Extracts\2562456244_PlayerModels_ST\models\dro\player\characters3\char15\char15.mdl"
         if not os.path.exists(os.path.join(source_pack, "models/dro/player/characters3/char12/char12.mdl")) or not os.path.exists(target_model):
@@ -251,7 +251,33 @@ class RetargetingTests(unittest.TestCase):
             "ovr_hoshino_himiko__angie_yonaga",
             "lua/autorun/ovr_bodygroup_compat_ovr_hoshino_himiko__angie_yonaga.lua",
         )
-        self.assertFalse(os.path.exists(lua_path))
+        self.assertTrue(os.path.exists(lua_path))
+        with open(lua_path, encoding="utf-8") as f:
+            content = f.read()
+        self.assertIn("GetInternalVariable('m_nBody')", content)
+        self.assertIn("SetBodygroup", content)
+
+    def test_enable_default_writes_bodygroup_compat_lua_when_source_target_known(self):
+        source_pack = r"C:\Users\user\Desktop\GMod_Override_Manager\overrides\Hoshino Himiko"
+        target_model = r"C:\Users\user\Desktop\Female_Shuichi_Addon_Extracts\2562456244_PlayerModels_ST\models\dro\player\characters3\char12\char12.mdl"
+        if not os.path.exists(os.path.join(source_pack, "models/dro/player/characters3/char12/char12.mdl")) or not os.path.exists(target_model):
+            self.skipTest("real Hoshino/Himiko models not available")
+        cfg = {"gmod_path": self.tempdir}
+        pack = {"name": "Hoshino Himiko", "slug": "ovr_hoshino_himiko", "folder": source_pack}
+
+        om.enable(cfg, pack, None)
+
+        lua_path = os.path.join(
+            self.tempdir,
+            "addons",
+            "ovr_hoshino_himiko",
+            "lua/autorun/ovr_bodygroup_compat_ovr_hoshino_himiko.lua",
+        )
+        self.assertTrue(os.path.exists(lua_path))
+        with open(lua_path, encoding="utf-8") as f:
+            content = f.read()
+        self.assertIn("models/dro/player/characters3/char12/char12.mdl", content)
+        self.assertIn("GetInternalVariable('m_nBody')", content)
 
     def test_bodygroup_name_patch_can_append_longer_labels(self):
         source_pack = r"C:\Users\user\Desktop\GMod_Override_Manager\overrides\Hoshino Himiko"

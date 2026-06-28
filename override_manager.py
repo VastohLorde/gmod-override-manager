@@ -47,7 +47,7 @@ OLD_COMMUNITY_INDEX_URLS = {
     # Pre-rename URL: auto-migrate existing configs to the new repo path.
     "https://raw.githubusercontent.com/VastohLorde/gmod-override-manager/main/community_packs.json",
 }
-APP_VERSION = "1.3"
+APP_VERSION = "1.4"
 RELEASES_API_URL = "https://api.github.com/repos/VastohLorde/shinri-trial-override-manager/releases/latest"
 RELEASES_PAGE_URL = "https://github.com/VastohLorde/shinri-trial-override-manager/releases/latest"
 UPDATE_ASSET_NAME = "GMod_Override_Manager.zip"
@@ -590,6 +590,45 @@ def customizable_groups(mdl_path):
         return []
 
 
+def _clean_option_name(name, i):
+    base = os.path.splitext(str(name or "").strip())[0].strip()
+    if not base or base.lower() in ("blank", "empty", "none"):
+        return "Option %d" % (i + 1)
+    return base
+
+
+def model_customization_options(mdl_path):
+    """Like customizable_groups, but each group also lists its individual submodel
+    (outfit) names: [{index, name, count, options:[name, ...]}]."""
+    try:
+        with open(mdl_path, "rb") as f:
+            d = f.read()
+        numbp, bpidx = struct.unpack_from("<ii", d, 232)
+    except Exception:
+        return []
+    groups = []
+    for b in range(max(0, numbp)):
+        bo = bpidx + b * 16
+        if bo + 16 > len(d):
+            break
+        szname, nummodels, base, modelindex = struct.unpack_from("<iiii", d, bo)
+        if nummodels <= 1:
+            continue
+        nstart = bo + szname
+        gname = d[nstart:d.find(b"\x00", nstart)].decode("latin1", "replace") if szname else ""
+        if bodygroup_key(gname) == "reference":
+            continue
+        options = []
+        for m in range(nummodels):
+            mo = bo + modelindex + m * 148
+            if mo + 64 > len(d):
+                break
+            raw = d[mo:d.find(b"\x00", mo)].decode("latin1", "replace")
+            options.append(_clean_option_name(raw, m))
+        groups.append({"index": b, "name": gname, "count": nummodels, "options": options})
+    return groups
+
+
 def pack_override_mdl(pack):
     src = infer_source_target(pack["folder"])
     base = src.get("model_base", "")
@@ -640,7 +679,7 @@ def recommend_targets(pack):
     ov_mdl = pack_override_mdl(pack)
     if not ov_mdl or not os.path.exists(ov_mdl):
         return None, []
-    ov_groups = customizable_groups(ov_mdl)
+    ov_groups = model_customization_options(ov_mdl)
     ov_skins = model_skin_count(ov_mdl)
     results = []
     for name, profile in CHARACTER_PROFILES.items():
@@ -2141,8 +2180,8 @@ class App(tk.Tk):
 
         win = tk.Toplevel(self)
         win.title("Best Target - Customization Compatibility")
-        win.geometry("780x620")
-        win.minsize(680, 480)
+        win.geometry("820x700")
+        win.minsize(700, 540)
         win.transient(self)
 
         head = ttk.Frame(win, padding=10)
@@ -2184,25 +2223,47 @@ class App(tk.Tk):
             iid = tree.insert("", "end", values=(r["name"], "%d%%" % pct, parts_s, skins_s, bgmap), tags=(tag,))
             rowmap[iid] = r
 
-        detail = tk.StringVar(value="Select a character above to see the full breakdown.")
-        ttk.Label(win, textvariable=detail, padding=10, wraplength=740, foreground="#222", justify="left").pack(fill="x")
+        detail_box = ttk.LabelFrame(win, text="Each individual outfit / option on the selected character", padding=6)
+        detail_box.pack(fill="both", expand=True, padx=10, pady=(0, 4))
+        summary = tk.StringVar(value="Select a character above to see every outfit option.")
+        ttk.Label(detail_box, textvariable=summary, foreground="#222").pack(anchor="w", pady=(0, 4))
+        ocols = ("part", "option", "status")
+        otree = ttk.Treeview(detail_box, columns=ocols, show="headings", selectmode="none", height=8)
+        for c, w, t in (("part", 120, "Slider"), ("option", 190, "Outfit / option"), ("status", 380, "On this character")):
+            otree.heading(c, text=t)
+            otree.column(c, width=w, anchor="w")
+        otree.tag_configure("yes", foreground="#1a7f1a")
+        otree.tag_configure("no", foreground="#b00020")
+        otree.pack(side="left", fill="both", expand=True)
+        osb = ttk.Scrollbar(detail_box, orient="vertical", command=otree.yview)
+        osb.pack(side="left", fill="y")
+        otree.configure(yscrollcommand=osb.set)
 
         def on_sel(_e=None):
             sel = tree.selection()
             if not sel:
                 return
             r = rowmap[sel[0]]
-            lines = ["%s - %d%% of options reachable (%d of %d)" % (r["name"], round(r["pct"] * 100), r["reach"], r["total"])]
-            for o, t, reach in r["pairs"]:
-                if t:
-                    extra = "" if reach >= o["count"] else "   (%d option(s) unreachable)" % (o["count"] - reach)
-                    lines.append("   - %s (%d) -> %s slider (%d): %d usable%s" % (o["name"], o["count"], t["name"], t["count"], reach, extra))
-                else:
-                    lines.append("   - %s (%d): no matching slider on this character - stuck on default" % (o["name"], o["count"]))
-            if r["sk_total"]:
-                note = " (this character has only 1 skin - skin swap locked)" if r["target_skins"] <= 1 else ""
-                lines.append("   - skins: %d of %d reachable%s" % (r["sk_reach"], r["sk_total"], note))
-            detail.set("\n".join(lines))
+            summary.set("%s - %d%% reachable (%d of %d options usable)" % (r["name"], round(r["pct"] * 100), r["reach"], r["total"]))
+            otree.delete(*otree.get_children())
+            for o, t, _reach in r["pairs"]:
+                ct = t["count"] if t else 1
+                tname = t["name"] if t else None
+                opts = o.get("options") or ["Option %d" % (i + 1) for i in range(o["count"])]
+                for i, opt in enumerate(opts):
+                    ok = i < ct
+                    if ok:
+                        status = "Reachable - set the '%s' slider to %d" % (o["name"], i + 1)
+                    elif tname:
+                        status = "Unreachable - '%s' slider only reaches %d here" % (tname, ct)
+                    else:
+                        status = "Unreachable - this character has no matching slider"
+                    otree.insert("", "end", values=(o["name"], opt, status), tags=("yes" if ok else "no",))
+            if r["override_skins"] > 1:
+                for i in range(r["override_skins"]):
+                    ok = (r["target_skins"] > 1) or i == 0
+                    status = ("Reachable - set the skin slider to %d" % (i + 1)) if ok else "Unreachable - this character has only 1 skin"
+                    otree.insert("", "end", values=("skin / colour", "Skin %d" % (i + 1), status), tags=("yes" if ok else "no",))
 
         tree.bind("<<TreeviewSelect>>", on_sel)
 

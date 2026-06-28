@@ -102,8 +102,10 @@ your model's customization is actually reachable:
 - A ranked list with a **Match %** and the best slider-by-slider fit.
 - 100% means every outfit/skin option on your model can be selected; lower means some
   options are hidden because that base character's slider has fewer positions.
-- Pick a row to see the full breakdown (e.g. *"outfit (3) → neck slider (2): 2 usable,
-  1 unreachable"*), then **Set as Target Character** to retarget to the best fit.
+- Pick a character to see an **outfit-by-outfit** table: every individual option on your
+  model (outfit1, outfit2, … plus each skin) with a clear reachable/unreachable status
+  and exactly which slider position selects it. Then **Set as Target Character** to
+  retarget to the best fit.
 
 This is why, for example, a 3-outfit model lands on a character whose matching slider
 also has 3 options, instead of one that caps it at 2.

@@ -41,10 +41,17 @@ else:
 OVERRIDES_DIR = os.path.join(APP_DIR, "overrides")
 CONFIG_PATH = os.path.join(APP_DIR, "config.json")
 DEFAULT_GMOD = r"C:\Program Files (x86)\Steam\steamapps\common\GarrysMod\garrysmod"
-DEFAULT_COMMUNITY_INDEX_URL = "https://raw.githubusercontent.com/VastohLorde/gmod-override-manager/main/community_packs.json"
+DEFAULT_COMMUNITY_INDEX_URL = "https://raw.githubusercontent.com/VastohLorde/shinri-trial-override-manager/main/community_packs.json"
 OLD_COMMUNITY_INDEX_URLS = {
     "https://raw.githubusercontent.com/YOURNAME/gmod-override-packs/main/community_packs.json",
+    # Pre-rename URL: auto-migrate existing configs to the new repo path.
+    "https://raw.githubusercontent.com/VastohLorde/gmod-override-manager/main/community_packs.json",
 }
+APP_VERSION = "1.2"
+RELEASES_API_URL = "https://api.github.com/repos/VastohLorde/shinri-trial-override-manager/releases/latest"
+RELEASES_PAGE_URL = "https://github.com/VastohLorde/shinri-trial-override-manager/releases/latest"
+UPDATE_ASSET_NAME = "GMod_Override_Manager.zip"
+APP_EXE_NAME = "GMod Override Manager.exe"
 DEFAULT_TARGET_NAME = "Default"
 CUSTOM_TARGET_NAME = "Custom target..."
 
@@ -987,6 +994,71 @@ def read_json_url(url):
     return json.loads(data.decode("utf-8"))
 
 
+def parse_version(text):
+    nums = re.findall(r"\d+", str(text or ""))
+    return tuple(int(n) for n in nums[:4]) if nums else (0,)
+
+
+def version_is_newer(remote, local):
+    size = max(len(remote), len(local))
+    r = remote + (0,) * (size - len(remote))
+    l = local + (0,) * (size - len(local))
+    return r > l
+
+
+def fetch_latest_release():
+    """Query GitHub for the latest release. Returns a dict or None on failure."""
+    data = read_json_url(RELEASES_API_URL)
+    tag = data.get("tag_name") or data.get("name") or ""
+    zip_url = ""
+    for asset in data.get("assets") or []:
+        if asset.get("name") == UPDATE_ASSET_NAME:
+            zip_url = asset.get("browser_download_url") or ""
+            break
+    return {
+        "tag": tag,
+        "version": parse_version(tag),
+        "zip_url": zip_url,
+        "notes": (data.get("body") or "").strip(),
+        "page": data.get("html_url") or RELEASES_PAGE_URL,
+    }
+
+
+def find_extracted_app_root(folder):
+    """Locate the folder holding the app exe inside an extracted update zip."""
+    if os.path.isfile(os.path.join(folder, APP_EXE_NAME)):
+        return folder
+    for root, _dirs, files in os.walk(folder):
+        if APP_EXE_NAME in files:
+            return root
+    return ""
+
+
+def write_update_script(tmp_dir, src_app, dst_app, exe_path, pid):
+    """Write a detached .bat that waits for the app to exit, copies the new
+    files over (leaving overrides/ and config.json untouched), and relaunches."""
+    bat = os.path.join(tmp_dir, "apply_update.bat")
+    exe_name = os.path.basename(exe_path)
+    lines = [
+        "@echo off",
+        "title GMod Override Manager Updater",
+        "echo Waiting for the app to close...",
+        ":waitloop",
+        'tasklist /FI "PID eq %d" 2>NUL | find "%d" >NUL' % (pid, pid),
+        "if not errorlevel 1 (",
+        "  ping 127.0.0.1 -n 2 >NUL",
+        "  goto waitloop",
+        ")",
+        "echo Installing update...",
+        'robocopy "%s" "%s" /E /NFL /NDL /NJH /NJS /R:2 /W:1 >NUL' % (src_app, dst_app),
+        "echo Update complete. Restarting...",
+        'start "" "%s\\%s"' % (dst_app, exe_name),
+    ]
+    with open(bat, "w", encoding="ascii", errors="ignore") as f:
+        f.write("\r\n".join(lines))
+    return bat
+
+
 def normalize_community_index(data):
     packs = data.get("packs") if isinstance(data, dict) else data
     if not isinstance(packs, list):
@@ -1182,6 +1254,8 @@ class App(tk.Tk):
         self.minsize(640, 360)
         self._build()
         self.refresh()
+        # Non-blocking update check shortly after the window appears.
+        self.after(1200, self.start_update_check)
 
     def _build(self):
         top = ttk.Frame(self, padding=8)
@@ -1250,6 +1324,14 @@ class App(tk.Tk):
                   foreground="#777").pack(side="left", padx=6)
         self.note = tk.StringVar(value="")
         ttk.Label(self, textvariable=self.note, padding=(8, 0, 8, 8), foreground="#a05").pack(fill="x")
+
+        bot4 = ttk.Frame(self, padding=(8, 0, 8, 8))
+        bot4.pack(fill="x")
+        ttk.Label(bot4, text=f"Version {APP_VERSION}", foreground="#777").pack(side="left")
+        ttk.Button(bot4, text="Check for Updates",
+                   command=lambda: self.start_update_check(manual=True)).pack(side="right")
+        self.update_status = tk.StringVar(value="")
+        ttk.Label(bot4, textvariable=self.update_status, foreground="#1a7f1a").pack(side="right", padx=8)
 
     TUTORIAL = (
         "GMOD OVERRIDE MANAGER — QUICK TUTORIAL\n"
@@ -1946,6 +2028,93 @@ class App(tk.Tk):
         translate_cache.restore(gp, log=lambda *_: None)
         self.note.set("Restored cached Lua from backup (translation undone).")
         messagebox.showinfo("Undo", "Restored the original cached Lua from backup.")
+
+    # ----- Update checking / self-update -----
+    def start_update_check(self, manual=False):
+        self.update_status.set("Checking for updates...")
+        def work():
+            try:
+                info = fetch_latest_release()
+            except Exception:
+                info = None
+            self.after(0, lambda: self._on_update_result(info, manual))
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_update_result(self, info, manual):
+        if not info or not info.get("tag"):
+            self.update_status.set("Update check failed")
+            if manual:
+                messagebox.showwarning(
+                    "Updates",
+                    "Could not check for updates.\nCheck your internet connection and try again.")
+            return
+        if version_is_newer(info["version"], parse_version(APP_VERSION)):
+            self.update_status.set(f"Update available: {info['tag']}")
+            msg = (f"A new version is available.\n\n"
+                   f"You have:  v{APP_VERSION}\n"
+                   f"Latest:     {info['tag']}\n\n"
+                   f"Download and install it now?")
+            notes = info.get("notes") or ""
+            if notes:
+                if len(notes) > 700:
+                    notes = notes[:700].rstrip() + "..."
+                msg += "\n\nWhat's new:\n" + notes
+            if messagebox.askyesno("Update available", msg):
+                self.run_self_update(info)
+        else:
+            self.update_status.set(f"Up to date (v{APP_VERSION})")
+            if manual:
+                messagebox.showinfo("Updates", f"You're on the latest version (v{APP_VERSION}).")
+
+    def _open_releases_page(self, info, reason):
+        try:
+            import webbrowser
+            webbrowser.open(info.get("page") or RELEASES_PAGE_URL)
+        except Exception:
+            pass
+        messagebox.showinfo("Update", reason)
+
+    def run_self_update(self, info):
+        if not getattr(sys, "frozen", False):
+            self._open_releases_page(
+                info, "Running from source - opened the releases page so you can pull the new version.")
+            return
+        if not info.get("zip_url"):
+            self._open_releases_page(
+                info, "Opened the releases page so you can download the update manually.")
+            return
+        try:
+            self.update_status.set("Downloading update...")
+            self.update_idletasks()
+            tmp = tempfile.mkdtemp(prefix="gom_update_")
+            zip_path = os.path.join(tmp, UPDATE_ASSET_NAME)
+            req = urllib.request.Request(info["zip_url"], headers={"User-Agent": "GModOverrideManager/1.0"})
+            with urllib.request.urlopen(req, timeout=180) as resp, open(zip_path, "wb") as out:
+                shutil.copyfileobj(resp, out)
+            extract_dir = os.path.join(tmp, "extracted")
+            safe_extract_zip(zip_path, extract_dir)
+            new_app = find_extracted_app_root(extract_dir)
+            if not new_app:
+                raise ValueError("The downloaded update did not contain the application files.")
+            # Never overwrite the user's installed packs or saved config.
+            for keep in ("overrides", "config.json"):
+                p = os.path.join(new_app, keep)
+                if os.path.isdir(p):
+                    shutil.rmtree(p, ignore_errors=True)
+                elif os.path.isfile(p):
+                    os.remove(p)
+            bat = write_update_script(tmp, new_app, APP_DIR, sys.executable, os.getpid())
+            subprocess.Popen(["cmd", "/c", bat],
+                             creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0),
+                             close_fds=True)
+            messagebox.showinfo("Updating", "The app will close to install the update, then reopen automatically.")
+            self.destroy()
+            os._exit(0)
+        except Exception as e:
+            self.update_status.set("Update failed")
+            messagebox.showerror(
+                "Update failed",
+                f"Could not install the update:\n{e}\n\nYou can download it manually from the releases page.")
 
 
 if __name__ == "__main__":

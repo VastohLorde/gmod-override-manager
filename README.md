@@ -1,4 +1,4 @@
-# GMod Override Manager
+# Shinri Trial Override Manager
 
 A small Windows app for **Shinri Trial** players to manage Garry's Mod
 model/skin/sprite overrides. Each override is a drop-in folder ("pack"); the app
@@ -98,7 +98,7 @@ The index can be hosted anywhere that serves raw JSON, including GitHub Pages or
 GitHub's raw file URLs. This build uses:
 
 ```
-https://raw.githubusercontent.com/VastohLorde/gmod-override-manager/main/community_packs.json
+https://raw.githubusercontent.com/VastohLorde/shinri-trial-override-manager/main/community_packs.json
 ```
 
 See `community_packs.example.json` for the format:
@@ -113,7 +113,7 @@ See `community_packs.example.json` for the format:
       "version": "0.1.0",
       "author": "VastohLorde",
       "description": "Replaces K1B0/Keebo with George Droyd.",
-      "download_url": "https://raw.githubusercontent.com/VastohLorde/gmod-override-manager/main/community_packs/George.Droyd.K1B0.zip"
+      "download_url": "https://raw.githubusercontent.com/VastohLorde/shinri-trial-override-manager/main/community_packs/George.Droyd.K1B0.zip"
     }
   ]
 }

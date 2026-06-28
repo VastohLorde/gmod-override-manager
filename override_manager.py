@@ -14,6 +14,7 @@ Disabling removes it. Changes take effect on the next map load / reconnect
 import os
 import sys
 import json
+import re
 import shutil
 import subprocess
 import struct
@@ -1061,6 +1062,106 @@ def install_community_pack(pack):
     return final_dir
 
 
+def workshop_item_id(value):
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError("Enter a Workshop URL or item ID.")
+    match = re.search(r"[?&]id=(\d+)", text)
+    if match:
+        return match.group(1)
+    match = re.fullmatch(r"\d+", text)
+    if match:
+        return text
+    raise ValueError("Could not find a numeric Workshop item ID.")
+
+
+def steamapps_from_gmod_path(gmod_path):
+    root = os.path.abspath(gmod_path or DEFAULT_GMOD)
+    garrysmod_dir = os.path.dirname(root)
+    common_dir = os.path.dirname(garrysmod_dir)
+    return os.path.dirname(common_dir)
+
+
+def find_workshop_gma(gmod_path, item_id):
+    item_dir = os.path.join(steamapps_from_gmod_path(gmod_path), "workshop", "content", "4000", str(item_id))
+    if not os.path.isdir(item_dir):
+        return ""
+    gmas = []
+    for root, _dirs, files in os.walk(item_dir):
+        for filename in files:
+            if filename.lower().endswith(".gma"):
+                gmas.append(os.path.join(root, filename))
+    if not gmas:
+        return ""
+    return sorted(gmas, key=lambda p: (os.path.getmtime(p), p.lower()), reverse=True)[0]
+
+
+def find_steamcmd():
+    candidates = [
+        shutil.which("steamcmd"),
+        shutil.which("steamcmd.exe"),
+        r"C:\Program Files (x86)\Steam\steamcmd.exe",
+        r"C:\steamcmd\steamcmd.exe",
+    ]
+    for path in candidates:
+        if path and os.path.isfile(path):
+            return path
+    return ""
+
+
+def download_workshop_gma(gmod_path, item_id):
+    steamcmd = find_steamcmd()
+    if not steamcmd:
+        raise FileNotFoundError("SteamCMD was not found. Subscribe/download the item in Steam, or install steamcmd.exe.")
+    cmd = [steamcmd, "+login", "anonymous", "+workshop_download_item", "4000", str(item_id), "+quit"]
+    proc = subprocess.run(cmd, cwd=os.path.dirname(steamcmd), capture_output=True, text=True, timeout=600)
+    if proc.returncode != 0:
+        raise RuntimeError((proc.stderr or proc.stdout or "SteamCMD download failed.").strip())
+    gma = find_workshop_gma(gmod_path, item_id)
+    if not gma:
+        raise FileNotFoundError("SteamCMD finished, but no .gma was found for that item.")
+    return gma
+
+
+def find_gmad(gmod_path):
+    root = os.path.abspath(gmod_path or DEFAULT_GMOD)
+    candidates = [
+        os.path.join(os.path.dirname(root), "bin", "gmad.exe"),
+        os.path.join(os.path.dirname(os.path.dirname(root)), "bin", "gmad.exe"),
+    ]
+    for path in candidates:
+        if os.path.isfile(path):
+            return path
+    return ""
+
+
+def extract_workshop_gma(gmod_path, gma_path, item_id):
+    gmad = find_gmad(gmod_path)
+    if not gmad:
+        raise FileNotFoundError("Could not find GMod's gmad.exe. Check the configured GMod folder.")
+    out_dir = os.path.join(APP_DIR, "workshop_extracts", str(item_id))
+    if os.path.isdir(out_dir):
+        shutil.rmtree(out_dir)
+    os.makedirs(out_dir, exist_ok=True)
+    cmd = [gmad, "extract", "-file", gma_path, "-out", out_dir]
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    if proc.returncode != 0:
+        raise RuntimeError((proc.stderr or proc.stdout or "gmad extraction failed.").strip())
+    return out_dir
+
+
+def find_model_files(folder):
+    models = []
+    model_root = os.path.join(folder, "models")
+    if not os.path.isdir(model_root):
+        return []
+    for root, _dirs, files in os.walk(model_root):
+        for filename in files:
+            if filename.lower().endswith(".mdl"):
+                models.append(os.path.join(root, filename))
+    return sorted(models, key=lambda p: p.lower())
+
+
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -1230,6 +1331,7 @@ class App(tk.Tk):
         model_path = tk.StringVar()
         arms_path = tk.StringVar()
         material_root = tk.StringVar()
+        workshop_link = tk.StringVar()
         sprite_dir = tk.StringVar()
         description = tk.StringVar(value="Created with Override Maker.")
         sprite_rows = []
@@ -1265,13 +1367,13 @@ class App(tk.Tk):
         canvas.bind("<Enter>", bind_wheel)
         canvas.bind("<Leave>", unbind_wheel)
 
-        def row(label, var, browse=None):
+        def row(label, var, browse=None, button_text="Browse"):
             frame = ttk.Frame(form)
             frame.pack(fill="x", pady=3)
             ttk.Label(frame, text=label, width=18).pack(side="left")
             ttk.Entry(frame, textvariable=var).pack(side="left", fill="x", expand=True, padx=6)
             if browse:
-                ttk.Button(frame, text="Browse", command=browse).pack(side="left")
+                ttk.Button(frame, text=button_text, command=browse).pack(side="left")
             return frame
 
         def update_source(_event=None):
@@ -1302,6 +1404,44 @@ class App(tk.Tk):
             if path:
                 material_root.set(path)
 
+        def load_workshop():
+            try:
+                item_id = workshop_item_id(workshop_link.get())
+                gma = find_workshop_gma(self.path_var.get(), item_id)
+                if not gma:
+                    if not messagebox.askyesno(
+                        "Workshop download",
+                        "That Workshop item is not already downloaded locally.\n\nTry downloading it with SteamCMD?",
+                        parent=win,
+                    ):
+                        return
+                    status.set("Downloading Workshop item with SteamCMD...")
+                    win.update_idletasks()
+                    gma = download_workshop_gma(self.path_var.get(), item_id)
+                status.set("Extracting Workshop addon...")
+                win.update_idletasks()
+                extracted = extract_workshop_gma(self.path_var.get(), gma, item_id)
+                models = find_model_files(extracted)
+                if not models:
+                    raise ValueError("Workshop addon extracted, but no .mdl files were found under models/.")
+                chosen = filedialog.askopenfilename(
+                    parent=win,
+                    title="Select Workshop model",
+                    initialdir=os.path.join(extracted, "models"),
+                    filetypes=[("Source model", "*.mdl")],
+                )
+                if not chosen:
+                    chosen = models[0] if len(models) == 1 else ""
+                if not chosen:
+                    status.set(f"Extracted to {extracted}. Select a model to continue.")
+                    return
+                model_path.set(chosen)
+                material_root.set(extracted)
+                status.set(f"Loaded Workshop item {item_id}.")
+            except Exception as e:
+                status.set(str(e))
+                messagebox.showerror("Workshop model", str(e), parent=win)
+
         row("Pack name", pack_name)
         row("Skin / variant", skin)
 
@@ -1317,6 +1457,7 @@ class App(tk.Tk):
         source_combo.pack(side="left", fill="x", expand=True, padx=6)
         source_combo.bind("<<ComboboxSelected>>", update_source)
 
+        row("Workshop link", workshop_link, load_workshop, "Load")
         row("Main model", model_path, browse_model)
         row("Arms model", arms_path, browse_arms)
         row("Material root", material_root, browse_material_root)

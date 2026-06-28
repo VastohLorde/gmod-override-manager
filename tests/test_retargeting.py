@@ -463,6 +463,21 @@ class RetargetingTests(unittest.TestCase):
             om.make_sprite_group_slots("Scrum Debate Left", 3),
         )
 
+    def test_workshop_item_id_parses_urls_and_plain_ids(self):
+        self.assertEqual("3035125163", om.workshop_item_id("https://steamcommunity.com/sharedfiles/filedetails/?id=3035125163&searchtext=hoshino"))
+        self.assertEqual("3035125163", om.workshop_item_id("3035125163"))
+
+    def test_find_workshop_gma_uses_gmod_steamapps_folder(self):
+        steamapps = os.path.join(self.tempdir, "steamapps")
+        gmod_path = os.path.join(steamapps, "common", "GarrysMod", "garrysmod")
+        item_dir = os.path.join(steamapps, "workshop", "content", "4000", "123")
+        os.makedirs(item_dir, exist_ok=True)
+        gma = os.path.join(item_dir, "addon.gma")
+        with open(gma, "wb") as f:
+            f.write(b"gma")
+
+        self.assertEqual(gma, om.find_workshop_gma(gmod_path, "123"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -47,7 +47,7 @@ OLD_COMMUNITY_INDEX_URLS = {
     # Pre-rename URL: auto-migrate existing configs to the new repo path.
     "https://raw.githubusercontent.com/VastohLorde/gmod-override-manager/main/community_packs.json",
 }
-APP_VERSION = "1.5"
+APP_VERSION = "1.6"
 RELEASES_API_URL = "https://api.github.com/repos/VastohLorde/shinri-trial-override-manager/releases/latest"
 RELEASES_PAGE_URL = "https://github.com/VastohLorde/shinri-trial-override-manager/releases/latest"
 UPDATE_ASSET_NAME = "GMod_Override_Manager.zip"
@@ -515,11 +515,28 @@ def find_target(cfg, name):
     return None
 
 
+def pack_recommended_target_name(cfg, pack):
+    """The pack's recommended target as a selectable character name, or DEFAULT when
+    the recommended character is the pack's own (baked) model."""
+    rec = (pack.get("recommended_target") or "").strip()
+    if not rec or rec == DEFAULT_TARGET_NAME:
+        return DEFAULT_TARGET_NAME
+    target = find_target(cfg, rec)
+    if not target:
+        return DEFAULT_TARGET_NAME
+    src = infer_source_target(pack.get("folder", "")) if pack.get("folder") else {}
+    src_base = src.get("model_base", "")
+    if src_base and path_without_ext(normalize_game_path(target["model_base"])) == path_without_ext(normalize_game_path(src_base)):
+        return DEFAULT_TARGET_NAME
+    return rec
+
+
 def saved_target_name(cfg, pack):
     targets = cfg.get("pack_targets")
-    if not isinstance(targets, dict):
-        return DEFAULT_TARGET_NAME
-    return targets.get(pack_addon_prefix(pack), DEFAULT_TARGET_NAME)
+    if isinstance(targets, dict) and pack_addon_prefix(pack) in targets:
+        return targets[pack_addon_prefix(pack)]
+    # No explicit choice -> fall back to the pack's recommended target.
+    return pack_recommended_target_name(cfg, pack)
 
 
 def save_pack_target(cfg, pack, target_name):
@@ -563,6 +580,7 @@ def find_known_target_mdl(target):
     model_rel = normalize_game_path(target.get("model_base", "")) + ".mdl"
     candidates = [
         os.path.join(APP_DIR, *model_rel.split("/")),
+        os.path.join(APP_DIR, "debug_extracts", "dro_playermodels_2562456244", *model_rel.split("/")),
         os.path.join(r"C:\Users\user\Desktop\Female_Shuichi_Addon_Extracts\2562456244_PlayerModels_ST", *model_rel.split("/")),
         os.path.join(r"C:\Users\user\Desktop\GMod_Override_Manager\overrides", *model_rel.split("/")),
     ]
@@ -679,21 +697,24 @@ def match_override_to_profile(ov_groups, ov_skins, profile):
     }
 
 
-def recommend_targets(pack):
-    """Rank every known character by how fully it can host this pack's customization.
+def recommend_targets_for_model(mdl_path):
+    """Rank every known character by how fully it can host this model's customization.
     Returns (override_profile_or_None, ranked_results)."""
-    ov_mdl = pack_override_mdl(pack)
-    if not ov_mdl or not os.path.exists(ov_mdl):
+    if not mdl_path or not os.path.exists(mdl_path):
         return None, []
-    ov_groups = model_customization_options(ov_mdl)
-    ov_skins = model_skin_count(ov_mdl)
+    ov_groups = model_customization_options(mdl_path)
+    ov_skins = model_skin_count(mdl_path)
     results = []
     for name, profile in CHARACTER_PROFILES.items():
         rep = match_override_to_profile(ov_groups, ov_skins, profile)
         rep["name"] = name
         results.append(rep)
     results.sort(key=lambda r: (-r["pct"], -r["reach"], r["name"]))
-    return {"groups": ov_groups, "skins": ov_skins, "mdl": ov_mdl}, results
+    return {"groups": ov_groups, "skins": ov_skins, "mdl": mdl_path}, results
+
+
+def recommend_targets(pack):
+    return recommend_targets_for_model(pack_override_mdl(pack))
 
 
 def lua_quote(value):
@@ -1054,6 +1075,7 @@ def create_override_pack(options):
             "character": character,
             "skin": str(options.get("skin") or "").strip(),
             "description": str(options.get("description") or "").strip(),
+            "recommended_target": str(options.get("recommended_target") or source_target.get("name") or "").strip(),
             "source_target": {
                 "name": source_target.get("name") or character,
                 "model_base": model_base,
@@ -1080,12 +1102,13 @@ def scan_overrides():
         has_content = os.path.isdir(os.path.join(folder, "models")) or os.path.isdir(os.path.join(folder, "materials"))
         if not has_content:
             continue
-        meta = {"name": name, "character": "(unspecified)", "skin": "", "description": "", "folder": folder}
+        meta = {"name": name, "character": "(unspecified)", "skin": "", "description": "",
+                "recommended_target": "", "folder": folder}
         mj = os.path.join(folder, "override.json")
         if os.path.exists(mj):
             try:
                 d = json.load(open(mj, encoding="utf-8"))
-                for k in ("name", "character", "skin", "description"):
+                for k in ("name", "character", "skin", "description", "recommended_target"):
                     if d.get(k):
                         meta[k] = d[k]
             except Exception:
@@ -1112,8 +1135,14 @@ def enable(cfg, pack, target=None):
                 raise ValueError("Could not infer this pack's source model path for retargeting.")
             copy_pack_tree(pack["folder"], dest, source, target)
             patch_retargeted_model_bodygroup_names(dest, pack, target, source)
+            write_bodygroup_compat_lua(dest, pack, target, source)
         else:
             copy_pack_tree(pack["folder"], dest)
+            source = infer_source_target(pack["folder"])
+            if source.get("model_base"):
+                compat_target = dict(source)
+                compat_target["name"] = DEFAULT_TARGET_NAME
+                write_bodygroup_compat_lua(dest, pack, compat_target, source)
         aj = os.path.join(dest, "addon.json")
         if not os.path.exists(aj):
             with open(aj, "w", encoding="utf-8") as f:
@@ -1434,7 +1463,7 @@ class App(tk.Tk):
         self.target_combo = ttk.Combobox(target_frame, textvariable=self.target_var, state="readonly", width=34)
         self.target_combo.pack(side="left", padx=6)
         self.target_combo.bind("<<ComboboxSelected>>", self.on_target_change)
-        ttk.Label(target_frame, text="Default = the pack's original character", foreground="#777").pack(side="left", padx=6)
+        ttk.Label(target_frame, text="Recommended = the character this override was made for", foreground="#777").pack(side="left", padx=6)
 
         bot = ttk.Frame(self, padding=8)
         bot.pack(fill="x")
@@ -1678,6 +1707,27 @@ class App(tk.Tk):
         row("Pack name", pack_name)
         row("Skin / variant", skin)
 
+        def pick_character():
+            mdl = model_path.get()
+            if not mdl or not os.path.exists(mdl):
+                messagebox.showinfo("Pick character to override",
+                                    "Choose the main model first - the suggestions are based on it.", parent=win)
+                return
+            if not CHARACTER_PROFILES:
+                messagebox.showwarning("Pick character to override",
+                                       "Character profile data is missing from this build.", parent=win)
+                return
+            ovp, ranked = recommend_targets_for_model(mdl)
+            if not ovp:
+                messagebox.showwarning("Pick character to override", "Couldn't read that model to analyze it.", parent=win)
+                return
+
+            def chosen(name):
+                override_target_name.set(name)
+                update_source()
+
+            self.show_best_target(ovp, ranked, "New override - pick a character to override", chosen, "Use This Character")
+
         source_frame = ttk.Frame(form)
         source_frame.pack(fill="x", pady=3)
         ttk.Label(source_frame, text="Character to override", width=18).pack(side="left")
@@ -1689,6 +1739,7 @@ class App(tk.Tk):
         )
         source_combo.pack(side="left", fill="x", expand=True, padx=6)
         source_combo.bind("<<ComboboxSelected>>", update_source)
+        ttk.Button(source_frame, text="Best Target...", command=pick_character).pack(side="left")
 
         row("Workshop link", workshop_link, load_workshop, "Load")
         row("Main model", model_path, browse_model)
@@ -1791,6 +1842,7 @@ class App(tk.Tk):
                     "character": target["name"],
                     "skin": skin.get(),
                     "description": description.get(),
+                    "recommended_target": target["name"],
                     "source_target": target,
                     "main_model": model_path.get(),
                     "arms_model": arms_path.get(),
@@ -1927,15 +1979,37 @@ class App(tk.Tk):
         ttk.Button(bot, text="Close", command=win.destroy).pack(side="right")
         win.after(100, load_index)
 
+    def recommended_label(self, pack):
+        """Friendly label for the pack's recommended character, e.g.
+        'Recommended (Ibuki Mioda)'. Falls back to 'Default'."""
+        if not pack:
+            return DEFAULT_TARGET_NAME
+        char = (pack.get("recommended_target") or "").strip() or (pack.get("character") or "").strip()
+        if not char or char == "(unspecified)":
+            return DEFAULT_TARGET_NAME
+        return "Recommended (%s)" % char
+
+    def is_default_label(self, name):
+        return name in (DEFAULT_TARGET_NAME, "Recommended") or str(name).startswith("Recommended (")
+
     def refresh_target_options(self):
-        values = [target["name"] for target in available_targets(self.cfg)] + [CUSTOM_TARGET_NAME]
+        rec = self.recommended_label(self.selected())
+        values = [rec] + [t["name"] for t in available_targets(self.cfg)
+                          if t["name"] != DEFAULT_TARGET_NAME] + [CUSTOM_TARGET_NAME]
         self.target_combo.configure(values=values)
         if self.target_var.get() not in values:
-            self.target_var.set(DEFAULT_TARGET_NAME)
+            self.target_var.set(rec)
 
     def selected_target_name(self):
         name = self.target_var.get() or DEFAULT_TARGET_NAME
-        return DEFAULT_TARGET_NAME if name == CUSTOM_TARGET_NAME else name
+        if name == CUSTOM_TARGET_NAME:
+            return DEFAULT_TARGET_NAME
+        if self.is_default_label(name):
+            # 'Recommended (...)' resolves to the pack's recommended target,
+            # which is DEFAULT when that character is the pack's own model.
+            p = self.selected()
+            return pack_recommended_target_name(self.cfg, p) if p else DEFAULT_TARGET_NAME
+        return name
 
     def selected_target(self):
         return find_target(self.cfg, self.selected_target_name())
@@ -1948,7 +2022,11 @@ class App(tk.Tk):
             return
         name = saved_target_name(self.cfg, p)
         valid = [target["name"] for target in available_targets(self.cfg)]
-        self.target_var.set(name if name in valid else DEFAULT_TARGET_NAME)
+        rec_resolved = pack_recommended_target_name(self.cfg, p)
+        if name == DEFAULT_TARGET_NAME or name == rec_resolved or name not in valid:
+            self.target_var.set(self.recommended_label(p))
+        else:
+            self.target_var.set(name)
 
     def prompt_custom_target(self):
         name = simpledialog.askstring("Custom target", "Target name:", parent=self)
@@ -2030,9 +2108,10 @@ class App(tk.Tk):
             self.restore_selected_pack_target()
             d = p.get("description") or "(no description)"
             active = enabled_target_name(self.cfg, p)
-            active_text = f" Active target: {active}." if active else ""
-            self.desc.set(f"{p['name']} — default target {p['character']} ({p['skin']}). "
-                          f"Selected target: {self.selected_target_name()}.{active_text}  {d}")
+            active_disp = self.recommended_label(p) if active == DEFAULT_TARGET_NAME else active
+            active_text = f" Active: {active_disp}." if active else ""
+            self.desc.set(f"{p['name']} — recommended: {p['character']} ({p['skin']}). "
+                          f"Selected: {self.target_var.get()}.{active_text}  {d}")
 
     def set_state(self, want_on):
         p = self.selected()
@@ -2184,6 +2263,13 @@ class App(tk.Tk):
             messagebox.showwarning("Best Target", "Couldn't read this pack's model to analyze it.")
             return
 
+        def pick(name):
+            self.target_var.set(name)
+            self.on_target_change()
+
+        self.show_best_target(ovp, ranked, pack["name"], pick, "Set as Target Character")
+
+    def show_best_target(self, ovp, ranked, title, on_pick, button_text):
         win = tk.Toplevel(self)
         win.title("Best Target - Customization Compatibility")
         win.geometry("820x700")
@@ -2192,7 +2278,7 @@ class App(tk.Tk):
 
         head = ttk.Frame(win, padding=10)
         head.pack(fill="x")
-        ttk.Label(head, text=pack["name"], font=("Segoe UI", 11, "bold")).pack(anchor="w")
+        ttk.Label(head, text=title, font=("Segoe UI", 11, "bold")).pack(anchor="w")
         parts = ", ".join("%s (%d options)" % (g["name"], g["count"]) for g in ovp["groups"]) or "none"
         ttk.Label(head, text="This model's customizable bodygroups: " + parts, foreground="#444",
                   wraplength=740, justify="left").pack(anchor="w")
@@ -2280,12 +2366,10 @@ class App(tk.Tk):
             sel = tree.selection()
             if not sel:
                 return
-            self.target_var.set(rowmap[sel[0]]["name"])
-            self.on_target_change()
+            on_pick(rowmap[sel[0]]["name"])
             win.destroy()
 
-        ttk.Button(btns, text="Set as Target Character", command=use_target).pack(side="left")
-        ttk.Label(btns, text="(then click Enable on the main window)", foreground="#777").pack(side="left", padx=8)
+        ttk.Button(btns, text=button_text, command=use_target).pack(side="left")
         ttk.Button(btns, text="Close", command=win.destroy).pack(side="right")
 
         children = tree.get_children()

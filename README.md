@@ -27,12 +27,13 @@ addon files sit *above* the server's in GMod's load order, so the override wins
 
 ## Choosing a target character
 Select an override, then use **Target Character** before clicking **Enable**.
-`Default` means the pack's original baked character. Any other listed character
-retargets the model and hands to that character while keeping the local pack
-folder unchanged.
+The first option, **Recommended (Character)**, is the character the pack is meant
+for (set by the pack), and it's selected by default for every override. Any other
+listed character retargets the model and hands to that character while keeping the
+local pack folder unchanged.
 
-To revert, choose `Default` and enable again. Disabling a pack removes every
-installed target variant for that pack.
+To go back, choose the **Recommended** option and enable again. Disabling a pack
+removes every installed target variant for that pack.
 
 Use **Custom target...** for weird cases. Enter a model base path such as:
 

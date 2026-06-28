@@ -48,7 +48,7 @@ OLD_COMMUNITY_INDEX_URLS = {
     # Pre-rename URL: auto-migrate existing configs to the new repo path.
     "https://raw.githubusercontent.com/VastohLorde/gmod-override-manager/main/community_packs.json",
 }
-APP_VERSION = "1.11"
+APP_VERSION = "1.12"
 RELEASES_API_URL = "https://api.github.com/repos/VastohLorde/shinri-trial-override-manager/releases/latest"
 RELEASES_PAGE_URL = "https://github.com/VastohLorde/shinri-trial-override-manager/releases/latest"
 UPDATE_ASSET_NAME = "GMod_Override_Manager.zip"
@@ -1760,25 +1760,18 @@ class App(tk.Tk):
         ttk.Button(bot, text="Override Maker", command=self.override_maker).pack(side="left")
         ttk.Button(bot, text="Community Packs", command=self.community_packs).pack(side="left")
         ttk.Button(bot, text="Best Target", command=self.compat_report).pack(side="left")
-        self.presence_btn_text = tk.StringVar(value="Community Presence: OFF")
-        ttk.Button(bot, textvariable=self.presence_btn_text, command=self.toggle_presence).pack(side="left", padx=4)
         ttk.Button(bot, text="Refresh", command=self.refresh).pack(side="right")
         ttk.Button(bot, text="Tutorial", command=self.show_tutorial).pack(side="right", padx=4)
 
-        bot2 = ttk.Frame(self, padding=(8, 0, 8, 8))
-        bot2.pack(fill="x")
-        ttk.Label(bot2, text="Live Translator (English):").pack(side="left")
-        ttk.Button(bot2, text="Enable", command=self.lt_enable).pack(side="left", padx=4)
-        ttk.Button(bot2, text="Disable", command=self.lt_disable).pack(side="left")
-        self.lt_status = tk.StringVar(value="")
-        ttk.Label(bot2, textvariable=self.lt_status, foreground="#1a7f1a").pack(side="left", padx=8)
+        settings = ttk.Frame(self, padding=(8, 2, 8, 6))
+        settings.pack(fill="x")
+        ttk.Label(settings, text="Settings:", foreground="#444").pack(side="left")
+        self.presence_btn_text = tk.StringVar(value="Community Presence: ON")
+        ttk.Button(settings, textvariable=self.presence_btn_text, command=self.toggle_presence).pack(side="left", padx=6)
+        ttk.Label(settings,
+                  text="(let other manager users on your server see/share your community packs - click to turn off)",
+                  foreground="#777").pack(side="left")
 
-        bot3 = ttk.Frame(self, padding=(8, 0, 8, 8))
-        bot3.pack(fill="x")
-        ttk.Button(bot3, text="Translate cache (one-shot)", command=self.translate_game).pack(side="left")
-        ttk.Button(bot3, text="Undo cache translation", command=self.untranslate_game).pack(side="left", padx=4)
-        ttk.Label(bot3, text="(live = legacy addon, swaps text every frame; cache = edits downloaded Lua once)",
-                  foreground="#777").pack(side="left", padx=6)
         self.note = tk.StringVar(value="")
         ttk.Label(self, textvariable=self.note, padding=(8, 0, 8, 8), foreground="#a05").pack(fill="x")
 
@@ -2381,7 +2374,6 @@ class App(tk.Tk):
             self.note.set("No override packs found. Drop a pack folder into the 'overrides' folder, then Refresh.")
         else:
             self.note.set("Tip: changes apply on next map load / server reconnect, not mid-session.")
-        self.lt_refresh()
 
     def selected(self):
         sel = self.tree.selection()
@@ -2499,6 +2491,8 @@ class App(tk.Tk):
         self.set_state(not is_enabled(self.cfg, p))
 
     def lt_refresh(self):
+        if not hasattr(self, "lt_status"):
+            return
         if live_translator is None:
             self.lt_status.set("unavailable")
             return

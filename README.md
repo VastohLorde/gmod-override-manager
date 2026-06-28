@@ -25,6 +25,24 @@ addon files sit *above* the server's in GMod's load order, so the override wins
 > hot-swap a model already loaded in your current session). It only changes what
 > **you** see — others need the same pack enabled.
 
+## Choosing a target character
+Select an override, then use **Target Character** before clicking **Enable**.
+`Default` means the pack's original baked character. Any other listed character
+retargets the model and hands to that character while keeping the local pack
+folder unchanged.
+
+To revert, choose `Default` and enable again. Disabling a pack removes every
+installed target variant for that pack.
+
+Use **Custom target...** for weird cases. Enter a model base path such as:
+
+```
+models/dro/player/characters1/char16/char16
+```
+
+Arms and sprite paths are optional. If a listed target has no known sprite path,
+the manager warns that sprites will stay on the pack's default character.
+
 ## Adding a character override
 Drop a pack folder into `overrides/`, then hit **Refresh**. A pack looks like:
 

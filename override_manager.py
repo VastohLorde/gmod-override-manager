@@ -19,11 +19,17 @@ import subprocess
 import threading
 import tempfile
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import ttk, filedialog, messagebox, simpledialog
 import urllib.request
 import zipfile
-import translate_cache
-import live_translator
+try:
+    import translate_cache
+except ImportError:
+    translate_cache = None
+try:
+    import live_translator
+except ImportError:
+    live_translator = None
 
 if getattr(sys, "frozen", False):
     # running as a PyInstaller .exe -> use the folder the .exe lives in
@@ -37,6 +43,101 @@ DEFAULT_COMMUNITY_INDEX_URL = "https://raw.githubusercontent.com/VastohLorde/gmo
 OLD_COMMUNITY_INDEX_URLS = {
     "https://raw.githubusercontent.com/YOURNAME/gmod-override-packs/main/community_packs.json",
 }
+DEFAULT_TARGET_NAME = "Default"
+CUSTOM_TARGET_NAME = "Custom target..."
+
+
+def normalize_game_path(path):
+    return str(path or "").replace("\\", "/").strip().rstrip("/")
+
+
+def path_without_ext(path):
+    path = normalize_game_path(path)
+    root, ext = os.path.splitext(path)
+    if ext.lower() in (".mdl", ".vvd", ".phy", ".vtx"):
+        return root
+    return path
+
+
+def safe_game_path(path, allow_empty=True, strip_ext=False):
+    raw = str(path or "").replace("\\", "/").strip()
+    if raw.startswith("/") or os.path.isabs(raw) or (len(raw) > 1 and raw[1] == ":"):
+        raise ValueError(f"Unsafe path: {path}")
+    cleaned = normalize_game_path(raw)
+    if not cleaned:
+        if allow_empty:
+            return ""
+        raise ValueError("Path cannot be empty.")
+    if ".." in cleaned.split("/"):
+        raise ValueError(f"Unsafe path: {path}")
+    allowed = ("models/", "materials/", "lua/")
+    if not cleaned.startswith(allowed):
+        raise ValueError("Path must start with models/, materials/, or lua/.")
+    return path_without_ext(cleaned) if strip_ext else cleaned
+
+
+def make_target(name, model_base, arms_base="", sprite_dir=""):
+    return {
+        "name": name,
+        "model_base": path_without_ext(normalize_game_path(model_base)),
+        "arms_base": path_without_ext(normalize_game_path(arms_base)) if arms_base else "",
+        "sprite_dir": normalize_game_path(sprite_dir) if sprite_dir else "",
+    }
+
+
+CHARACTER_TARGETS = [
+    make_target("Akane Owari", "models/dro/player/characters2/char11/char11.mdl", "models/dro/player/characters2/char11/c_arms/char11_arms.mdl"),
+    make_target("Angie Yonaga", "models/dro/player/characters3/char15/char15.mdl", "models/dro/player/characters3/char15/c_arms/arms.mdl"),
+    make_target("Aoi Asahina (DR)", "models/dro/player/characters1/char11/char11.mdl", "models/dro/player/characters1/char11/c_arms/char11_arms.mdl"),
+    make_target("Byakuya Togami", "models/dro/player/characters1/char2/char2.mdl", "models/dro/player/characters1/char2/c_arms/char2_arms.mdl"),
+    make_target("Byakuya Togami (DR2)", "models/dro/player/characters2/char13/char13.mdl", "models/dro/player/characters2/char13/c_arms/char13_arms.mdl"),
+    make_target("Celestia Ludenberg", "models/dro/player/characters1/char8/char8.mdl", "models/dro/player/characters1/char8/c_arms/char8_arms.mdl"),
+    make_target("Chiaki Nanami", "models/dro/player/characters2/char7/char7.mdl", "models/dro/player/characters2/char7/c_arms/char7_arms.mdl"),
+    make_target("Chihiro", "models/dro/player/characters1/char5/char5.mdl", "models/dro/player/characters1/char5/c_arms/char5_arms.mdl"),
+    make_target("Fuyuhiko Kuzuryu", "models/dro/player/characters2/char4/char4.mdl", "models/dro/player/characters2/char4/c_arms/char4_arms.mdl"),
+    make_target("Gonta Gokuhara", "models/dro/player/characters3/char7/char7.mdl", "models/dro/player/characters3/char7/c_arms/char7_arms.mdl"),
+    make_target("Gundam Tanaka", "models/dro/player/characters2/char3/char3.mdl", "models/dro/player/characters2/char3/c_arms/char3_arms.mdl"),
+    make_target("Hajime Hinata", "models/dro/player/characters2/char1/char1.mdl", "models/dro/player/characters2/char1/c_arms/char1_arms.mdl"),
+    make_target("Hifumi Yamada", "models/dro/player/characters1/char13/char13.mdl", "models/dro/player/characters1/char13/c_arms/char13_arms.mdl"),
+    make_target("Himiko Yumeno", "models/dro/player/characters3/char12/char12.mdl", "models/dro/player/characters3/char12/c_arms/char12_arms.mdl"),
+    make_target("Ibuki Mioda", "models/dro/player/characters2/char5/char5.mdl", "models/dro/player/characters2/char5/c_arms/char5_arms.mdl"),
+    make_target("Junko Enoshima (Default)", "models/dro/player/characters1/char9/char9.mdl", "models/dro/player/characters1/char9/c_arms/char9_arms.mdl"),
+    make_target("K1-B0", "models/dro/player/characters3/char3/char3.mdl", "models/dro/player/characters3/char3/c_arms/char3_arms.mdl"),
+    make_target("Kaede Akamatsu", "models/dro/player/characters3/char8/char8.mdl", "models/dro/player/characters3/char8/c_arms/char8_arms.mdl"),
+    make_target("Kaito Momota", "models/dro/player/characters3/char4/char4.mdl", "models/dro/player/characters3/char4/c_arms/char4_arms.mdl"),
+    make_target("Kazuichi Soda 2", "models/dro/player/characters2/char16/char16.mdl", "models/dro/player/characters2/char16/c_arms/char16_arms.mdl"),
+    make_target("Kirumi Tojo", "models/dro/player/characters3/char13/char13.mdl", "models/dro/player/characters3/char13/c_arms/char13_arms.mdl"),
+    make_target("Kiyotaka Ishimaru", "models/dro/player/characters1/char3/char3.mdl", "models/dro/player/characters1/char3/c_arms/char3_arms.mdl"),
+    make_target("Kokichi Oma Beta Uniform", "models/dro/player/characters3/char2/char2_beta.mdl", "models/dro/player/characters3/char2/c_arms/char2_beta_arms.mdl"),
+    make_target("Kokichi Oma School Uniform", "models/dro/player/characters3/char2/char2_uniform.mdl", "models/dro/player/characters3/char2/c_arms/char2_school_arms.mdl"),
+    make_target("Kokichi Oma Ultimate Uniform", "models/dro/player/characters3/char2/char2.mdl", "models/dro/player/characters3/char2/c_arms/char2_arms.mdl"),
+    make_target("Korekiyo Shinguji", "models/dro/player/characters3/char6/char6.mdl", "models/dro/player/characters3/char6/c_arms/char6_arms.mdl"),
+    make_target("Kyoko Kirigiri", "models/dro/player/characters1/char6/char6.mdl", "models/dro/player/characters1/char6/c_arms/char6_arms.mdl"),
+    make_target("Leon Kuwata", "models/dro/player/characters1/char14/char14.mdl", "models/dro/player/characters1/char14/c_arms/char14_arms.mdl"),
+    make_target("Mahiru Koizumi", "models/dro/player/characters2/char10/char10.mdl", "models/dro/player/characters2/char10/c_arms/char10_arms.mdl"),
+    make_target("Maki Harukawa", "models/dro/player/characters3/char9/char9.mdl", "models/dro/player/characters3/char9/c_arms/char9_arms.mdl"),
+    make_target("Makoto Naegi", "models/dro/player/characters1/char1/char1.mdl", "models/dro/player/characters1/char1/c_arms/char1_arms.mdl"),
+    make_target("Mikan Tsumiki", "models/dro/player/characters2/char8/char8.mdl", "models/dro/player/characters2/char8/c_arms/char8_arms.mdl"),
+    make_target("Miu Iruma", "models/dro/player/characters3/char11/char11.mdl", "models/dro/player/characters3/char11/c_arms/char11_arms.mdl"),
+    make_target("Mondo Owada", "models/dro/player/characters1/char4/char4.mdl", "models/dro/player/characters1/char4/c_arms/char4_arms.mdl"),
+    make_target("Mukuro Ikusaba", "models/dro/player/characters1/char16/char16.mdl", "models/dro/player/characters1/char16/c_arms/char16_arms.mdl"),
+    make_target("Mukuro Ikusaba 2", "models/dro/player/characters1/char16/char16_uniformhp.mdl", "models/dro/player/characters1/char16/c_arms/char16_arms.mdl"),
+    make_target("Nagito Komaeda", "models/dro/player/characters2/char2/char2.mdl", "models/dro/player/characters2/char2/c_arms/char2_arms.mdl"),
+    make_target("Nekomaru", "models/dro/player/characters2/char14/char14.mdl", "models/dro/player/characters2/char14/c_arms/char14_arms.mdl"),
+    make_target("Peko Pekoyama", "models/dro/player/characters2/char9/char9.mdl", "models/dro/player/characters2/char9/c_arms/char9_arms.mdl"),
+    make_target("Rantaro Amami", "models/dro/player/characters3/char5/char5.mdl", "models/dro/player/characters3/char5/c_arms/char5_arms.mdl"),
+    make_target("Ryoma Hoshi", "models/dro/player/characters3/char16/char16.mdl", "models/dro/player/characters3/char16/c_arms/char16_arms.mdl"),
+    make_target("Sakura Ogami", "models/dro/player/characters1/char12/char12.mdl", "models/dro/player/characters1/char12/c_arms/char12_arms.mdl"),
+    make_target("Sayaka Maizono", "models/dro/player/characters1/char7/char7.mdl", "models/dro/player/characters1/char7/c_arms/char7_arms.mdl"),
+    make_target("Shuichi Saihara", "models/dro/player/characters3/char1/char1.mdl", "models/dro/player/characters3/char1/c_arms/char1_arms.mdl"),
+    make_target("Sonia Nevermind", "models/dro/player/characters2/char6/char6.mdl", "models/dro/player/characters2/char6/c_arms/char6_arms.mdl"),
+    make_target("Tenko Chabashira", "models/dro/player/characters3/char10/char10.mdl", "models/dro/player/characters3/char10/c_arms/char10_arms.mdl"),
+    make_target("Teruteru Hanamura", "models/dro/player/characters2/char15/char15.mdl", "models/dro/player/characters2/char15/c_arms/char15_arms.mdl"),
+    make_target("Toko Fukawa", "models/dro/player/characters1/char10/char10.mdl", "models/dro/player/characters1/char10/c_arms/arms.mdl"),
+    make_target("Toko Fukawa (Genocide)", "models/dro/player/characters1/char10/char10_genocide.mdl", "models/dro/player/characters1/char10/c_arms/arms.mdl"),
+    make_target("Tsumugi Shirogane", "models/dro/player/characters3/char14/char14.mdl", "models/dro/player/characters3/char14/c_arms/char14_arms.mdl"),
+    make_target("Yasuhiro Hagakure (Danganronpa)", "models/dro/player/characters1/char15/char15.mdl", "models/dro/player/characters1/char15/c_arms/char15_arms.mdl"),
+]
 
 
 def load_config():
@@ -65,6 +166,221 @@ def addons_dir(cfg):
 
 def slugify(name):
     return "ovr_" + "".join(c.lower() if c.isalnum() else "_" for c in name).strip("_")
+
+
+def target_key(target):
+    if not target:
+        return DEFAULT_TARGET_NAME
+    return target.get("name") or DEFAULT_TARGET_NAME
+
+
+def target_slug(name):
+    if not name or name == DEFAULT_TARGET_NAME:
+        return "default"
+    return "".join(c.lower() if c.isalnum() else "_" for c in name).strip("_") or "target"
+
+
+def addon_slug(pack, target=None):
+    base = pack.get("slug") or slugify(pack.get("name") or "override")
+    if not target or target_key(target) == DEFAULT_TARGET_NAME:
+        return base
+    return f"{base}__{target_slug(target_key(target))}"
+
+
+def pack_addon_prefix(pack):
+    return pack.get("slug") or slugify(pack.get("name") or "override")
+
+
+def installed_pack_addons(cfg, pack):
+    ad = addons_dir(cfg)
+    if not os.path.isdir(ad):
+        return []
+    base = pack_addon_prefix(pack)
+    out = []
+    for name in os.listdir(ad):
+        full = os.path.join(ad, name)
+        if not os.path.isdir(full):
+            continue
+        if name == base or name.startswith(base + "__"):
+            out.append(full)
+    return out
+
+
+def disable_all_pack_targets(cfg, pack):
+    for folder in installed_pack_addons(cfg, pack):
+        shutil.rmtree(folder, ignore_errors=True)
+
+
+def custom_targets(cfg):
+    data = cfg.get("custom_targets")
+    if not isinstance(data, dict):
+        return []
+    out = []
+    for name, item in sorted(data.items()):
+        if not isinstance(item, dict):
+            continue
+        try:
+            out.append({
+                "name": name,
+                "model_base": safe_game_path(item.get("model_base", ""), allow_empty=False, strip_ext=True),
+                "arms_base": safe_game_path(item.get("arms_base", ""), allow_empty=True, strip_ext=True),
+                "sprite_dir": safe_game_path(item.get("sprite_dir", ""), allow_empty=True),
+            })
+        except ValueError:
+            continue
+    return out
+
+
+def available_targets(cfg):
+    return [{"name": DEFAULT_TARGET_NAME, "model_base": "", "arms_base": "", "sprite_dir": ""}] + CHARACTER_TARGETS + custom_targets(cfg)
+
+
+def find_target(cfg, name):
+    if not name or name == DEFAULT_TARGET_NAME:
+        return None
+    for target in available_targets(cfg):
+        if target["name"] == name and target["name"] != DEFAULT_TARGET_NAME:
+            return target
+    return None
+
+
+def saved_target_name(cfg, pack):
+    targets = cfg.get("pack_targets")
+    if not isinstance(targets, dict):
+        return DEFAULT_TARGET_NAME
+    return targets.get(pack_addon_prefix(pack), DEFAULT_TARGET_NAME)
+
+
+def save_pack_target(cfg, pack, target_name):
+    cfg.setdefault("pack_targets", {})[pack_addon_prefix(pack)] = target_name or DEFAULT_TARGET_NAME
+    save_config(cfg)
+
+
+def enabled_target_name(cfg, pack):
+    ad = addons_dir(cfg)
+    if not os.path.isdir(ad):
+        return ""
+    installed = {os.path.basename(path) for path in installed_pack_addons(cfg, pack)}
+    if pack_addon_prefix(pack) in installed:
+        return DEFAULT_TARGET_NAME
+    for target in available_targets(cfg):
+        if target["name"] == DEFAULT_TARGET_NAME:
+            continue
+        if addon_slug(pack, target) in installed:
+            return target["name"]
+    base = pack_addon_prefix(pack) + "__"
+    for name in sorted(installed):
+        if name.startswith(base):
+            return name[len(base):].replace("_", " ").title()
+    return ""
+
+
+def read_source_target_from_json(folder):
+    path = os.path.join(folder, "override.json")
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        return None
+    source = data.get("source_target")
+    if not isinstance(source, dict):
+        return None
+    return {
+        "model_base": safe_game_path(source.get("model_base", ""), allow_empty=True, strip_ext=True),
+        "arms_base": safe_game_path(source.get("arms_base", ""), allow_empty=True, strip_ext=True),
+        "sprite_dir": safe_game_path(source.get("sprite_dir", ""), allow_empty=True),
+    }
+
+
+def rel_game_path(folder, path):
+    return normalize_game_path(os.path.relpath(path, folder))
+
+
+def infer_source_target(folder):
+    explicit = read_source_target_from_json(folder)
+    if explicit:
+        return explicit
+
+    model_base = ""
+    arms_base = ""
+    sprite_dir = ""
+    models_root = os.path.join(folder, "models")
+    if os.path.isdir(models_root):
+        mdl_paths = []
+        for root, _dirs, files in os.walk(models_root):
+            for filename in files:
+                if filename.lower().endswith(".mdl"):
+                    mdl_paths.append(rel_game_path(folder, os.path.join(root, filename)))
+        mdl_paths.sort(key=lambda p: ("c_arms/" in p.lower(), p.lower()))
+        for rel in mdl_paths:
+            low = rel.lower()
+            if "/c_arms/" in low and not arms_base:
+                arms_base = path_without_ext(rel)
+            elif not model_base:
+                model_base = path_without_ext(rel)
+        if not arms_base:
+            for rel in mdl_paths:
+                if "/c_arms/" in rel.lower():
+                    arms_base = path_without_ext(rel)
+                    break
+
+    sprites_root = os.path.join(folder, "materials", "dro", "sprites", "characters")
+    if os.path.isdir(sprites_root):
+        dirs = set()
+        for root, _dirs, files in os.walk(sprites_root):
+            if any(name.lower().endswith((".vtf", ".vmt")) for name in files):
+                dirs.add(rel_game_path(folder, root))
+        if dirs:
+            sprite_dir = sorted(dirs, key=lambda p: (p.count("/"), p.lower()))[0]
+
+    return {"model_base": model_base, "arms_base": arms_base, "sprite_dir": sprite_dir}
+
+
+def replace_base(rel_path, source_base, target_base):
+    rel = normalize_game_path(rel_path)
+    source = normalize_game_path(source_base)
+    target = normalize_game_path(target_base)
+    if not source or not target:
+        return None
+    if rel == source:
+        return target
+    if rel.startswith(source + "."):
+        return target + rel[len(source):]
+    if rel.startswith(source + "/"):
+        return target + rel[len(source):]
+    return None
+
+
+def map_retarget_path(rel_path, source, target):
+    rel = normalize_game_path(rel_path)
+    for source_key, target_key_name in (("arms_base", "arms_base"), ("model_base", "model_base")):
+        mapped = replace_base(rel, source.get(source_key, ""), target.get(target_key_name, ""))
+        if mapped:
+            return mapped
+    source_sprite = normalize_game_path(source.get("sprite_dir", ""))
+    target_sprite = normalize_game_path(target.get("sprite_dir", ""))
+    if source_sprite and target_sprite:
+        if rel == source_sprite:
+            return target_sprite
+        if rel.startswith(source_sprite + "/"):
+            return target_sprite + rel[len(source_sprite):]
+    return rel
+
+
+def copy_pack_tree(src_folder, dest_folder, source=None, target=None):
+    for root, dirs, files in os.walk(src_folder):
+        dirs[:] = [d for d in dirs if d != "__pycache__"]
+        for filename in files:
+            src_path = os.path.join(root, filename)
+            rel = rel_game_path(src_folder, src_path)
+            if rel == "override.json":
+                continue
+            dest_rel = map_retarget_path(rel, source, target) if source and target else rel
+            dest_path = os.path.join(dest_folder, *dest_rel.split("/"))
+            os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+            shutil.copy2(src_path, dest_path)
 
 
 def pack_folder_name(name):
@@ -97,31 +413,35 @@ def scan_overrides():
     return packs
 
 
-def is_enabled(cfg, pack):
-    return os.path.isdir(os.path.join(addons_dir(cfg), pack["slug"]))
+def is_enabled(cfg, pack, target=None):
+    if target is None:
+        return bool(installed_pack_addons(cfg, pack))
+    return os.path.isdir(os.path.join(addons_dir(cfg), addon_slug(pack, target)))
 
 
-def enable(cfg, pack):
-    dest = os.path.join(addons_dir(cfg), pack["slug"])
-    if os.path.isdir(dest):
+def enable(cfg, pack, target=None):
+    disable_all_pack_targets(cfg, pack)
+    dest = os.path.join(addons_dir(cfg), addon_slug(pack, target))
+    try:
+        os.makedirs(dest, exist_ok=True)
+        if target and target_key(target) != DEFAULT_TARGET_NAME:
+            source = infer_source_target(pack["folder"])
+            if not source.get("model_base"):
+                raise ValueError("Could not infer this pack's source model path for retargeting.")
+            copy_pack_tree(pack["folder"], dest, source, target)
+        else:
+            copy_pack_tree(pack["folder"], dest)
+        aj = os.path.join(dest, "addon.json")
+        if not os.path.exists(aj):
+            with open(aj, "w", encoding="utf-8") as f:
+                json.dump({"title": pack["name"], "type": "model", "tags": ["fun"], "ignore": []}, f)
+    except Exception:
         shutil.rmtree(dest, ignore_errors=True)
-    os.makedirs(dest, exist_ok=True)
-    for sub in ("models", "materials", "lua"):
-        src = os.path.join(pack["folder"], sub)
-        if os.path.isdir(src):
-            shutil.copytree(src, os.path.join(dest, sub))
-    aj = os.path.join(pack["folder"], "addon.json")
-    if os.path.exists(aj):
-        shutil.copy2(aj, os.path.join(dest, "addon.json"))
-    else:
-        json.dump({"title": pack["name"], "type": "model", "tags": ["fun"], "ignore": []},
-                  open(os.path.join(dest, "addon.json"), "w", encoding="utf-8"))
+        raise
 
 
 def disable(cfg, pack):
-    dest = os.path.join(addons_dir(cfg), pack["slug"])
-    if os.path.isdir(dest):
-        shutil.rmtree(dest, ignore_errors=True)
+    disable_all_pack_targets(cfg, pack)
 
 
 def read_json_url(url):
@@ -257,6 +577,15 @@ class App(tk.Tk):
         ttk.Label(self, textvariable=self.desc, padding=8, wraplength=720,
                   foreground="#444").pack(fill="x")
 
+        target_frame = ttk.Frame(self, padding=(8, 0, 8, 4))
+        target_frame.pack(fill="x")
+        ttk.Label(target_frame, text="Target Character:").pack(side="left")
+        self.target_var = tk.StringVar(value=DEFAULT_TARGET_NAME)
+        self.target_combo = ttk.Combobox(target_frame, textvariable=self.target_var, state="readonly", width=34)
+        self.target_combo.pack(side="left", padx=6)
+        self.target_combo.bind("<<ComboboxSelected>>", self.on_target_change)
+        ttk.Label(target_frame, text="Default = the pack's original character", foreground="#777").pack(side="left", padx=6)
+
         bot = ttk.Frame(self, padding=8)
         bot.pack(fill="x")
         ttk.Button(bot, text="Enable", command=lambda: self.set_state(True)).pack(side="left")
@@ -296,22 +625,28 @@ class App(tk.Tk):
         "   Click an override in the list, then Enable or Disable\n"
         "   (or just double-click the row to toggle).\n"
         "   The Status column shows ENABLED / disabled.\n\n"
-        "3) WHEN IT TAKES EFFECT\n"
+        "3) CHOOSE WHO IT OVERRIDES\n"
+        "   Use Target Character before enabling.\n"
+        "   Default means the pack's original character.\n"
+        "   Pick another character to retarget the model/hands quickly.\n"
+        "   Pick Default again and enable to revert.\n"
+        "   Use Custom target... for unusual model paths.\n\n"
+        "4) WHEN IT TAKES EFFECT\n"
         "   Changes apply on the next map load or server RECONNECT —\n"
         "   GMod can't swap a model already loaded in your current game.\n"
         "   So: toggle here, then reconnect to the server.\n\n"
-        "4) ADD A NEW OVERRIDE (drag & drop)\n"
+        "5) ADD A NEW OVERRIDE (drag & drop)\n"
         "   Click 'Open overrides folder'. Drop a pack FOLDER inside it,\n"
         "   then click Refresh. A pack looks like:\n"
         "       MyOverride/\n"
         "         override.json   (name, character, skin, description)\n"
         "         models/...      (model files)\n"
         "         materials/...   (textures / sprites)\n\n"
-        "5) ADD A COMMUNITY PACK\n"
+        "6) ADD A COMMUNITY PACK\n"
         "   Click 'Community Packs', paste or keep an index URL, then Refresh.\n"
         "   Pick a pack and click Install. It downloads into overrides/ like\n"
         "   a normal dropped-in pack, then you can Enable it.\n\n"
-        "6) WHO SEES IT\n"
+        "7) WHO SEES IT\n"
         "   Only YOU see your overrides. Friends need the same pack\n"
         "   enabled on their own copy (share this whole folder/app).\n\n"
         "WHY A LEGACY ADDON (not Workshop)?\n"
@@ -468,17 +803,84 @@ class App(tk.Tk):
         ttk.Button(bot, text="Close", command=win.destroy).pack(side="right")
         win.after(100, load_index)
 
+    def refresh_target_options(self):
+        values = [target["name"] for target in available_targets(self.cfg)] + [CUSTOM_TARGET_NAME]
+        self.target_combo.configure(values=values)
+        if self.target_var.get() not in values:
+            self.target_var.set(DEFAULT_TARGET_NAME)
+
+    def selected_target_name(self):
+        name = self.target_var.get() or DEFAULT_TARGET_NAME
+        return DEFAULT_TARGET_NAME if name == CUSTOM_TARGET_NAME else name
+
+    def selected_target(self):
+        return find_target(self.cfg, self.selected_target_name())
+
+    def restore_selected_pack_target(self):
+        self.refresh_target_options()
+        p = self.selected()
+        if not p:
+            self.target_var.set(DEFAULT_TARGET_NAME)
+            return
+        name = saved_target_name(self.cfg, p)
+        valid = [target["name"] for target in available_targets(self.cfg)]
+        self.target_var.set(name if name in valid else DEFAULT_TARGET_NAME)
+
+    def prompt_custom_target(self):
+        name = simpledialog.askstring("Custom target", "Target name:", parent=self)
+        if not name:
+            return None
+        name = name.strip()
+        model_base = simpledialog.askstring("Custom target", "Model base path, e.g.\nmodels/dro/player/characters1/char16/char16", parent=self)
+        if not model_base:
+            return None
+        arms_base = simpledialog.askstring("Custom target", "Arms base path (optional):", parent=self) or ""
+        sprite_dir = simpledialog.askstring("Custom target", "Sprite folder path (optional):", parent=self) or ""
+        try:
+            target = {
+                "name": name,
+                "model_base": safe_game_path(model_base, allow_empty=False, strip_ext=True),
+                "arms_base": safe_game_path(arms_base, allow_empty=True, strip_ext=True),
+                "sprite_dir": safe_game_path(sprite_dir, allow_empty=True),
+            }
+        except ValueError as e:
+            messagebox.showerror("Custom target", str(e))
+            return None
+        self.cfg.setdefault("custom_targets", {})[name] = {
+            "model_base": target["model_base"],
+            "arms_base": target["arms_base"],
+            "sprite_dir": target["sprite_dir"],
+        }
+        save_config(self.cfg)
+        self.refresh_target_options()
+        return target
+
+    def on_target_change(self, _event=None):
+        p = self.selected()
+        if not p:
+            self.target_var.set(DEFAULT_TARGET_NAME)
+            return
+        if self.target_var.get() == CUSTOM_TARGET_NAME:
+            target = self.prompt_custom_target()
+            if not target:
+                self.restore_selected_pack_target()
+                return
+            self.target_var.set(target["name"])
+        save_pack_target(self.cfg, p, self.selected_target_name())
+        self.update_desc()
+
     def refresh(self):
+        self.refresh_target_options()
         self.packs = scan_overrides()
         self.tree.delete(*self.tree.get_children())
         ad = addons_dir(self.cfg)
         ok = os.path.isdir(ad)
         for i, p in enumerate(self.packs):
-            on = is_enabled(self.cfg, p) if ok else False
+            active_target = enabled_target_name(self.cfg, p) if ok else ""
             self.tree.insert("", "end", iid=str(i),
                              values=(p["name"], p["character"], p["skin"],
-                                     "ENABLED" if on else "disabled"),
-                             tags=("on" if on else "off",))
+                                     f"ENABLED: {active_target}" if active_target else "disabled"),
+                             tags=("on" if active_target else "off",))
         if not ok:
             self.note.set("GMod 'addons' folder not found — set the correct GMod folder above.")
         elif not self.packs:
@@ -496,8 +898,12 @@ class App(tk.Tk):
     def update_desc(self):
         p = self.selected()
         if p:
+            self.restore_selected_pack_target()
             d = p.get("description") or "(no description)"
-            self.desc.set(f"{p['name']} — overrides {p['character']} ({p['skin']}).  {d}")
+            active = enabled_target_name(self.cfg, p)
+            active_text = f" Active target: {active}." if active else ""
+            self.desc.set(f"{p['name']} — default target {p['character']} ({p['skin']}). "
+                          f"Selected target: {self.selected_target_name()}.{active_text}  {d}")
 
     def set_state(self, want_on):
         p = self.selected()
@@ -509,7 +915,17 @@ class App(tk.Tk):
             return
         try:
             if want_on:
-                enable(self.cfg, p)
+                target = self.selected_target()
+                if target:
+                    source = infer_source_target(p["folder"])
+                    if source.get("sprite_dir") and not target.get("sprite_dir"):
+                        if not messagebox.askyesno("Sprites not retargeted",
+                                                   "This target has no known sprite folder yet.\n\n"
+                                                   "The model and hands will retarget, but sprites will stay on the pack's default character.\n\n"
+                                                   "Continue?"):
+                            return
+                save_pack_target(self.cfg, p, self.selected_target_name())
+                enable(self.cfg, p, target)
             else:
                 disable(self.cfg, p)
         except Exception as e:
@@ -546,10 +962,16 @@ class App(tk.Tk):
         self.set_state(not is_enabled(self.cfg, p))
 
     def lt_refresh(self):
+        if live_translator is None:
+            self.lt_status.set("unavailable")
+            return
         on = live_translator.is_installed(self.cfg.get("gmod_path", DEFAULT_GMOD))
         self.lt_status.set("ENABLED (restart GMod)" if on else "disabled")
 
     def lt_enable(self):
+        if live_translator is None:
+            messagebox.showerror("Live Translator", "Live Translator support is not included in this build.")
+            return
         gp = self.cfg.get("gmod_path", DEFAULT_GMOD)
         if not os.path.isdir(os.path.join(gp, "addons")):
             messagebox.showerror("GMod not found", "Set the correct GMod folder first.")
@@ -569,6 +991,9 @@ class App(tk.Tk):
                             "You should see a green 'Live Translator active' indicator top-left for ~20s.")
 
     def lt_disable(self):
+        if live_translator is None:
+            messagebox.showerror("Live Translator", "Live Translator support is not included in this build.")
+            return
         live_translator.uninstall(self.cfg.get("gmod_path", DEFAULT_GMOD))
         self.lt_refresh()
         messagebox.showinfo("Live Translator", "Disabled (removed). Restart GMod to apply.")
@@ -581,6 +1006,9 @@ class App(tk.Tk):
                                           filetypes=[("JSON", "*.json")])
 
     def translate_game(self):
+        if translate_cache is None:
+            messagebox.showerror("Translate", "Cache translation support is not included in this build.")
+            return
         gp = self.cfg.get("gmod_path", DEFAULT_GMOD)
         if not os.path.isdir(os.path.join(gp, "cache", "lua")):
             messagebox.showerror("No cache", "GMod cache/lua not found. Set the correct GMod folder, and join the server once so it caches the Lua.")
@@ -603,6 +1031,9 @@ class App(tk.Tk):
         threading.Thread(target=work, daemon=True).start()
 
     def untranslate_game(self):
+        if translate_cache is None:
+            messagebox.showerror("Undo", "Cache translation support is not included in this build.")
+            return
         gp = self.cfg.get("gmod_path", DEFAULT_GMOD)
         if not os.path.isdir(os.path.join(gp, "cache", "lua", "..", "lua_backup_translate")):
             pass

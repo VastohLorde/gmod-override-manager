@@ -117,6 +117,20 @@ class RetargetingTests(unittest.TestCase):
             om.map_retarget_path("materials/dro/sprites/characters/dr_v3/himiko yumeno/ct_sprite_1.vtf", source, target),
         )
 
+    def test_builtin_angie_target_has_sprite_directory(self):
+        target = om.find_target({}, "Angie Yonaga")
+
+        self.assertEqual("materials/dro/sprites/characters/dr_v3/angie yonaga", target["sprite_dir"])
+
+    def test_target_change_needs_auto_apply_when_pack_already_enabled(self):
+        addons = os.path.join(self.tempdir, "addons")
+        os.makedirs(os.path.join(addons, "ovr_hoshino_himiko"), exist_ok=True)
+        cfg = {"gmod_path": self.tempdir}
+        pack = {"name": "Hoshino Himiko", "slug": "ovr_hoshino_himiko"}
+
+        self.assertTrue(om.target_change_needs_apply(cfg, pack, "Angie Yonaga"))
+        self.assertFalse(om.target_change_needs_apply(cfg, pack, om.DEFAULT_TARGET_NAME))
+
     def test_safe_game_path_rejects_unsafe_paths(self):
         self.assertEqual("models/dro/player/characters1/char16/char16", om.safe_game_path("models\\dro\\player\\characters1\\char16\\char16.mdl", allow_empty=False, strip_ext=True))
         for value in ("", "../models/x", "/models/x", "C:/models/x", "cfg/client.vdf"):

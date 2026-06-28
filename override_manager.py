@@ -76,12 +76,44 @@ def safe_game_path(path, allow_empty=True, strip_ext=False):
     return path_without_ext(cleaned) if strip_ext else cleaned
 
 
+def sprite_name_from_target_name(name):
+    base = str(name or "").split("(")[0].strip()
+    if base.endswith(" 2"):
+        base = base[:-2].strip()
+    aliases = {
+        "K1-B0": "k1b0",
+        "Keebo": "k1b0",
+        "Nekomaru": "nekomaru nidai",
+    }
+    if base in aliases:
+        return aliases[base]
+    return " ".join("".join(c.lower() if c.isalnum() else " " for c in base).split())
+
+
+def default_sprite_dir(name, model_base):
+    model = normalize_game_path(model_base).lower()
+    game = ""
+    if "/characters1/" in model:
+        game = "dr_1"
+    elif "/characters2/" in model:
+        game = "dr_2"
+    elif "/characters3/" in model:
+        game = "dr_v3"
+    if not game:
+        return ""
+    sprite_name = sprite_name_from_target_name(name)
+    if not sprite_name:
+        return ""
+    return f"materials/dro/sprites/characters/{game}/{sprite_name}"
+
+
 def make_target(name, model_base, arms_base="", sprite_dir=""):
+    model = path_without_ext(normalize_game_path(model_base))
     return {
         "name": name,
-        "model_base": path_without_ext(normalize_game_path(model_base)),
+        "model_base": model,
         "arms_base": path_without_ext(normalize_game_path(arms_base)) if arms_base else "",
-        "sprite_dir": normalize_game_path(sprite_dir) if sprite_dir else "",
+        "sprite_dir": normalize_game_path(sprite_dir) if sprite_dir else default_sprite_dir(name, model),
     }
 
 
@@ -273,6 +305,13 @@ def enabled_target_name(cfg, pack):
         if name.startswith(base):
             return name[len(base):].replace("_", " ").title()
     return ""
+
+
+def target_change_needs_apply(cfg, pack, target_name):
+    active = enabled_target_name(cfg, pack)
+    if not active:
+        return False
+    return active != (target_name or DEFAULT_TARGET_NAME)
 
 
 def read_source_target_from_json(folder):
@@ -866,8 +905,13 @@ class App(tk.Tk):
                 self.restore_selected_pack_target()
                 return
             self.target_var.set(target["name"])
-        save_pack_target(self.cfg, p, self.selected_target_name())
-        self.update_desc()
+        target_name = self.selected_target_name()
+        should_apply = target_change_needs_apply(self.cfg, p, target_name)
+        save_pack_target(self.cfg, p, target_name)
+        if should_apply:
+            self.set_state(True)
+        else:
+            self.update_desc()
 
     def refresh(self):
         self.refresh_target_options()

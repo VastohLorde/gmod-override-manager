@@ -766,22 +766,40 @@ def pack_folder_name(name):
 
 
 MODEL_SIDECAR_EXTS = (".mdl", ".vvd", ".phy", ".dx90.vtx", ".sw.vtx", ".ani")
-INITIAL_TALK_SPRITE_COUNT = 3
+SPRITE_GROUPS = [
+    {"name": "Talk", "initial": 3, "prefix": "ct_sprite", "first": None},
+    {"name": "Argue", "initial": 2, "prefix": "ct_argue", "first": None},
+    {"name": "Consent", "initial": 1, "prefix": "ct_consent", "first": "ct_consent.vtf"},
+    {"name": "Scrum Debate Left", "initial": 1, "prefix": "ct_scrum_left", "first": "ct_scrum_left.vtf"},
+    {"name": "Scrum Debate Right", "initial": 1, "prefix": "ct_scrum_right", "first": "ct_scrum_right.vtf"},
+]
+
+
+def sprite_group_config(group_name):
+    for group in SPRITE_GROUPS:
+        if group["name"] == group_name:
+            return group
+    raise ValueError(f"Unknown sprite group: {group_name}")
+
+
+def make_sprite_group_slot(group_name, index):
+    group = sprite_group_config(group_name)
+    index = max(1, int(index))
+    label = f"{group_name} {index}"
+    if index == 1 and group.get("first"):
+        return (group_name, group["first"])
+    return (label, f"{group['prefix']}_{index}.vtf")
 
 
 def make_talk_sprite_slots(count):
-    return [(f"Talk {i}", f"ct_sprite_{i}.vtf") for i in range(1, max(0, int(count)) + 1)]
+    return [make_sprite_group_slot("Talk", i) for i in range(1, max(0, int(count)) + 1)]
 
 
-SPECIAL_SPRITE_SLOTS = [
-    ("Argue 1", "ct_argue_1.vtf"),
-    ("Argue 2", "ct_argue_2.vtf"),
-    ("Consent", "ct_consent.vtf"),
-    ("Scrum Debate Left", "ct_scrum_left.vtf"),
-    ("Scrum Debate Right", "ct_scrum_right.vtf"),
+SPRITE_SLOTS = [
+    make_sprite_group_slot(group["name"], i)
+    for group in SPRITE_GROUPS
+    for i in range(1, int(group["initial"]) + 1)
 ]
-
-SPRITE_SLOTS = make_talk_sprite_slots(INITIAL_TALK_SPRITE_COUNT) + SPECIAL_SPRITE_SLOTS
 
 
 def copy_model_sidecars(src_mdl, dest_base, output_dir):
@@ -1209,8 +1227,7 @@ class App(tk.Tk):
         material_root = tk.StringVar()
         sprite_dir = tk.StringVar()
         description = tk.StringVar(value="Created with Override Maker.")
-        talk_sprite_vars = {}
-        special_sprite_vars = {label: tk.StringVar() for label, _filename in SPECIAL_SPRITE_SLOTS}
+        sprite_rows = []
         status = tk.StringVar(value="")
 
         form = ttk.Frame(win, padding=10)
@@ -1277,18 +1294,15 @@ class App(tk.Tk):
         sprite_box = ttk.LabelFrame(form, text="Manual sprite assignments")
         sprite_box.pack(fill="both", expand=True, pady=(10, 4))
 
-        talk_header = ttk.Frame(sprite_box, padding=(6, 3))
-        talk_header.pack(fill="x")
-        ttk.Label(talk_header, text="Talk sprites", width=28).pack(side="left")
-
-        talk_rows = ttk.Frame(sprite_box)
-        talk_rows.pack(fill="x")
-
-        def add_sprite_row(parent, label, filename, var):
+        def add_sprite_row(parent, group_name, index):
+            label, filename = make_sprite_group_slot(group_name, index)
+            path_var = tk.StringVar()
+            filename_var = tk.StringVar(value=filename)
             frame = ttk.Frame(parent, padding=(6, 3))
             frame.pack(fill="x")
-            ttk.Label(frame, text=f"{label} -> {filename}", width=28).pack(side="left")
-            ttk.Entry(frame, textvariable=var).pack(side="left", fill="x", expand=True, padx=6)
+            ttk.Label(frame, text=label, width=22).pack(side="left")
+            ttk.Entry(frame, textvariable=filename_var, width=22).pack(side="left", padx=(0, 6))
+            ttk.Entry(frame, textvariable=path_var).pack(side="left", fill="x", expand=True, padx=6)
 
             def choose(slot_label=label):
                 path = filedialog.askopenfilename(
@@ -1297,27 +1311,31 @@ class App(tk.Tk):
                     filetypes=[("Game sprite", "*.vtf *.vmt")],
                 )
                 if path:
-                    var.set(path)
+                    path_var.set(path)
 
             ttk.Button(frame, text="Pick", command=choose).pack(side="left")
-            ttk.Button(frame, text="Clear", command=lambda: var.set("")).pack(side="left", padx=3)
+            ttk.Button(frame, text="Clear", command=lambda: path_var.set("")).pack(side="left", padx=3)
+            sprite_rows.append({
+                "label": label,
+                "path_var": path_var,
+                "filename_var": filename_var,
+            })
 
-        def add_talk_sprite():
-            index = len(talk_sprite_vars) + 1
-            label, filename = make_talk_sprite_slots(index)[-1]
-            var = tk.StringVar()
-            talk_sprite_vars[index] = var
-            add_sprite_row(talk_rows, label, filename, var)
+        for group in SPRITE_GROUPS:
+            group_state = {"count": 0}
+            header = ttk.Frame(sprite_box, padding=(6, 8, 6, 3))
+            header.pack(fill="x")
+            ttk.Label(header, text=f"{group['name']} sprites", width=28).pack(side="left")
+            rows = ttk.Frame(sprite_box)
+            rows.pack(fill="x")
 
-        ttk.Button(talk_header, text="Add Talk Sprite", command=add_talk_sprite).pack(side="left")
-        for _ in range(INITIAL_TALK_SPRITE_COUNT):
-            add_talk_sprite()
+            def add_group_sprite(group_name=group["name"], group_rows=rows, state=group_state):
+                state["count"] += 1
+                add_sprite_row(group_rows, group_name, state["count"])
 
-        special_header = ttk.Frame(sprite_box, padding=(6, 8, 6, 3))
-        special_header.pack(fill="x")
-        ttk.Label(special_header, text="Special sprites").pack(side="left")
-        for label, filename in SPECIAL_SPRITE_SLOTS:
-            add_sprite_row(sprite_box, label, filename, special_sprite_vars[label])
+            ttk.Button(header, text=f"Add {group['name']}", command=add_group_sprite).pack(side="left")
+            for _ in range(int(group["initial"])):
+                add_group_sprite()
 
         ttk.Label(form, textvariable=status, foreground="#a05").pack(fill="x", pady=(4, 0))
 
@@ -1327,15 +1345,13 @@ class App(tk.Tk):
                 messagebox.showerror("Override Maker", "Select a source character.", parent=win)
                 return
             assignments = {}
-            for index, var in sorted(talk_sprite_vars.items()):
-                path = var.get().strip()
+            for row_data in sprite_rows:
+                path = row_data["path_var"].get().strip()
                 if path:
-                    label, filename = make_talk_sprite_slots(index)[-1]
-                    assignments[label] = {"path": path, "filename": filename}
-            for label, filename in SPECIAL_SPRITE_SLOTS:
-                path = special_sprite_vars[label].get().strip()
-                if path:
-                    assignments[label] = {"path": path, "filename": filename}
+                    assignments[row_data["label"]] = {
+                        "path": path,
+                        "filename": row_data["filename_var"].get().strip(),
+                    }
             output = os.path.join(OVERRIDES_DIR, pack_folder_name(pack_name.get()))
             if os.path.exists(output):
                 if not messagebox.askyesno("Replace pack", f"Replace existing local override folder?\n\n{output}", parent=win):

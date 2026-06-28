@@ -48,7 +48,7 @@ OLD_COMMUNITY_INDEX_URLS = {
     # Pre-rename URL: auto-migrate existing configs to the new repo path.
     "https://raw.githubusercontent.com/VastohLorde/gmod-override-manager/main/community_packs.json",
 }
-APP_VERSION = "1.10"
+APP_VERSION = "1.11"
 RELEASES_API_URL = "https://api.github.com/repos/VastohLorde/shinri-trial-override-manager/releases/latest"
 RELEASES_PAGE_URL = "https://github.com/VastohLorde/shinri-trial-override-manager/releases/latest"
 UPDATE_ASSET_NAME = "GMod_Override_Manager.zip"
@@ -1491,6 +1491,7 @@ local MARK     = "\226\128\139OVRP1\226\128\139"  -- zero-width-wrapped marker
 file.CreateDir(DIR)
 local mine, community = {}, {}
 local offers = {}
+local lastAnn = {}
 local lastStatus = 0
 local panel
 
@@ -1574,17 +1575,31 @@ hook.Add("OnPlayerChat", "ovr_presence_listen", function(ply, text)
     if not isstring(text) or not sw(text, MARK) then return end
     if IsValid(ply) and ply == LocalPlayer() then return true end
     local from = IsValid(ply) and ply:Nick() or "Someone"
-    local added = false
+    local key = IsValid(ply) and ply:SteamID() or from
+    local theirs, newOnes = {}, 0
     for entry in string.gmatch(text:sub(#MARK + 1), "([^;]+)") do
         if entry ~= "" then
             local pack, target = entry:match("^(.-)::(.*)$")
-            if pack and community[pack] and not have(pack, target) then
-                offers[pack .. "|" .. (target or "")] = { pack = pack, target = target, from = from }
-                added = true
+            if pack and community[pack] then
+                theirs[#theirs + 1] = pack
+                if not have(pack, target) then
+                    offers[pack .. "|" .. (target or "")] = { pack = pack, target = target, from = from }
+                    newOnes = newOnes + 1
+                end
             end
         end
     end
-    if added then notify(from .. " is using community overrides - type !ovr to view and install.") end
+    -- Always let you know who else is running the manager (even if you already
+    -- have all their packs), re-announcing only when their set of overrides changes.
+    if #theirs > 0 then
+        local sig = table.concat(theirs, ",")
+        if lastAnn[key] ~= sig then
+            lastAnn[key] = sig
+            local msg = from .. " is using Override Manager: " .. table.concat(theirs, ", ")
+            if newOnes > 0 then msg = msg .. "  (type !ovr to install " .. newOnes .. " you don't have)" end
+            notify(msg)
+        end
+    end
     return true  -- hide the beacon line from our chat
 end)
 

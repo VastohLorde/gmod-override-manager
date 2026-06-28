@@ -146,6 +146,8 @@ def bodygroup_compat_map(target_groups, override_groups):
         used.add(override["index"])
         mapping[target["index"]] = {
             "target_name": target.get("name") or "",
+            "target_base": int(target.get("base") or 1),
+            "target_count": int(target.get("count") or 1),
             "override_index": override["index"],
             "override_name": override.get("name") or "",
             "override_count": int(override.get("count") or 1),
@@ -440,18 +442,30 @@ def generate_bodygroup_compat_lua(model_path, mapping):
     for target_index in sorted(mapping):
         item = mapping[target_index]
         lines.append(
-            f"  [{int(target_index)}] = {{ override = {int(item['override_index'])}, count = {int(item['override_count'])}, name = {lua_quote(item.get('override_name', ''))} }},"
+            f"  [{int(target_index)}] = {{ targetBase = {int(item.get('target_base') or 1)}, targetCount = {int(item.get('target_count') or 1)}, override = {int(item['override_index'])}, count = {int(item['override_count'])}, name = {lua_quote(item.get('override_name', ''))} }},"
         )
     lines += [
         "}",
+        "local function rawBody(ply)",
+        "  local body = ply:GetInternalVariable('m_nBody')",
+        "  if body == nil and ply.GetSaveTable then",
+        "    local st = ply:GetSaveTable()",
+        "    body = st and st.m_nBody",
+        "  end",
+        "  return tonumber(body) or 0",
+        "end",
         "local function apply()",
         "  local ply = LocalPlayer()",
         "  if not IsValid(ply) then return end",
         "  if string.lower(ply:GetModel() or '') ~= MODEL then return end",
         "  if ply.__ovrBodygroupCompatBusy then return end",
         "  ply.__ovrBodygroupCompatBusy = true",
-        "  for targetIndex, item in pairs(MAP) do",
-        "    local value = ply:GetBodygroup(targetIndex) or 0",
+        "  local body = rawBody(ply)",
+        "  for _, item in pairs(MAP) do",
+        "    local value = 0",
+        "    if item.targetBase and item.targetBase > 0 and item.targetCount and item.targetCount > 1 then",
+        "      value = math.floor(body / item.targetBase) % item.targetCount",
+        "    end",
         "    if item.count and item.count > 0 then value = math.Clamp(value, 0, item.count - 1) end",
         "    if ply:GetBodygroup(item.override) ~= value then ply:SetBodygroup(item.override, value) end",
         "  end",

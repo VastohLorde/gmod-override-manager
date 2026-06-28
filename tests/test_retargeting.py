@@ -233,6 +233,8 @@ class RetargetingTests(unittest.TestCase):
             text = f.read()
         self.assertIn("models/dro/player/characters3/char15/char15.mdl", text)
         self.assertIn("SetBodygroup", text)
+        self.assertIn("m_nBody", text)
+        self.assertIn("targetBase", text)
         self.assertIn("halo", text)
 
     def test_disable_removes_default_and_retargeted_addons_for_pack(self):
